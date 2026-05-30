@@ -4,7 +4,7 @@ Infrastructure as Code for a 25-service AI agency homelab running on a single lo
 
 ## Stack
 
-- **OS:** Debian 13 (archbox)
+- **OS:** Arch Linux (archbox)
 - **Containers:** Rootless Podman with systemd quadlets
 - **Networking:** Cloudflare Tunnel (no open ports)
 - **LLM routing:** Gemini 2.5 Flash → Ollama (MikePC RTX 5060 Ti) → Groq fallback
