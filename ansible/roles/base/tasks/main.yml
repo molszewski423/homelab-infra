@@ -1,0 +1,38 @@
+---
+- name: Update pacman package cache
+  pacman:
+    update_cache: true
+
+- name: Install base packages
+  pacman:
+    name:
+      - git
+      - vim
+      - htop
+      - curl
+      - wget
+      - rsync
+      - fish
+      - openssh
+      - sudo
+    state: present
+
+- name: Enable and start SSH
+  systemd:
+    name: sshd
+    enabled: true
+    state: started
+
+- name: Enable IP forwarding (required for Tailscale exit node)
+  sysctl:
+    name: "{{ item }}"
+    value: "1"
+    sysctl_file: /etc/sysctl.d/99-tailscale.conf
+    reload: true
+  loop:
+    - net.ipv4.ip_forward
+    - net.ipv6.conf.all.forwarding
+
+- name: Enable linger for mike user (keep services running after logout)
+  command: loginctl enable-linger mike
+  changed_when: false

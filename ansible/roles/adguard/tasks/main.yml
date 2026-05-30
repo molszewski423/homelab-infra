@@ -1,0 +1,33 @@
+---
+- name: Install AdGuard Home
+  pacman:
+    name: adguardhome
+    state: present
+
+- name: Disable systemd-resolved (conflicts with AdGuard on port 53)
+  systemd:
+    name: systemd-resolved
+    enabled: false
+    state: stopped
+    masked: true
+
+- name: Deploy AdGuard config
+  copy:
+    src: "{{ playbook_dir }}/../network/adguard/AdGuardHome.yaml"
+    dest: /var/lib/adguardhome/AdGuardHome.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart AdGuard
+
+- name: Enable and start AdGuard Home
+  systemd:
+    name: adguardhome
+    enabled: true
+    state: started
+
+handlers:
+  - name: Restart AdGuard
+    systemd:
+      name: adguardhome
+      state: restarted

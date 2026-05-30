@@ -1,0 +1,34 @@
+---
+- name: Install nftables
+  pacman:
+    name: nftables
+    state: present
+
+- name: Deploy nftables config
+  copy:
+    src: "{{ playbook_dir }}/../network/nftables/nftables.conf"
+    dest: /etc/nftables.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nftables
+
+- name: Enable and start nftables
+  systemd:
+    name: nftables
+    enabled: true
+    state: started
+
+- name: Load required kernel modules
+  modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - nf_tables
+    - xt_MASQUERADE
+
+handlers:
+  - name: Reload nftables
+    systemd:
+      name: nftables
+      state: reloaded

@@ -1,0 +1,47 @@
+---
+- name: Install Podman and dependencies
+  pacman:
+    name:
+      - podman
+      - cni-plugins
+      - slirp4netns
+      - fuse-overlayfs
+      - aardvark-dns
+      - netavark
+    state: present
+
+- name: Ensure subuid entry for mike
+  lineinfile:
+    path: /etc/subuid
+    line: "mike:100000:65536"
+    create: true
+
+- name: Ensure subgid entry for mike
+  lineinfile:
+    path: /etc/subgid
+    line: "mike:100000:65536"
+    create: true
+
+- name: Create containers/systemd directory for quadlets
+  file:
+    path: /home/mike/.config/containers/systemd
+    state: directory
+    owner: mike
+    group: mike
+    mode: "0755"
+
+- name: Deploy quadlet files
+  copy:
+    src: "{{ playbook_dir }}/../quadlets/"
+    dest: /home/mike/.config/containers/systemd/
+    owner: mike
+    group: mike
+    mode: "0644"
+  notify: Reload user systemd
+
+handlers:
+  - name: Reload user systemd
+    become: false
+    systemd:
+      daemon_reload: true
+      scope: user

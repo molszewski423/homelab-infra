@@ -1,0 +1,35 @@
+---
+- name: Clone agency repo
+  become: false
+  git:
+    repo: https://gitlab.com/molszewski423/ringcatch-agency.git
+    dest: /home/mike/agency
+    version: main
+    update: false  # don't overwrite local changes
+
+- name: Check .env exists
+  become: false
+  stat:
+    path: /home/mike/agency/.env
+  register: env_file
+
+- name: Warn if .env missing
+  debug:
+    msg: >
+      WARNING: /home/mike/agency/.env does not exist.
+      Copy from backup or create manually before starting the pod.
+  when: not env_file.stat.exists
+
+- name: Reload user systemd daemon
+  become: false
+  systemd:
+    daemon_reload: true
+    scope: user
+
+- name: Start agency pod
+  become: false
+  systemd:
+    name: agency-pod
+    state: started
+    scope: user
+  when: env_file.stat.exists

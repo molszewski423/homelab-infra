@@ -1,0 +1,53 @@
+---
+- name: Install CrowdSec and nftables bouncer
+  pacman:
+    name:
+      - crowdsec
+      - crowdsec-firewall-bouncer-nftables
+    state: present
+
+- name: Install CrowdSec collections
+  command: "cscli collections install {{ item }}"
+  loop:
+    - crowdsecurity/linux
+    - crowdsecurity/sshd
+    - crowdsecurity/whitelist-good-actors
+  changed_when: false
+
+- name: Deploy bouncer config
+  copy:
+    src: "{{ playbook_dir }}/../network/crowdsec/firewall-bouncer.yaml"
+    dest: /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart bouncer
+
+- name: Deploy acquisitions config
+  copy:
+    src: "{{ playbook_dir }}/../network/crowdsec/acquis.yaml"
+    dest: /etc/crowdsec/acquis.yaml
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart CrowdSec
+
+- name: Enable and start CrowdSec
+  systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - crowdsec
+    - crowdsec-firewall-bouncer
+
+handlers:
+  - name: Restart CrowdSec
+    systemd:
+      name: crowdsec
+      state: restarted
+
+  - name: Restart bouncer
+    systemd:
+      name: crowdsec-firewall-bouncer
+      state: restarted

@@ -1,0 +1,24 @@
+---
+- name: Install Tailscale
+  pacman:
+    name: tailscale
+    state: present
+
+- name: Enable and start tailscaled
+  systemd:
+    name: tailscaled
+    enabled: true
+    state: started
+
+- name: Check if already authenticated
+  command: tailscale status
+  register: tailscale_status
+  changed_when: false
+  failed_when: false
+
+- name: Authenticate Tailscale (run manually if needed)
+  debug:
+    msg: >
+      Tailscale not authenticated. Run manually:
+      sudo tailscale up --advertise-exit-node
+  when: "'Logged out' in tailscale_status.stdout or tailscale_status.rc != 0"

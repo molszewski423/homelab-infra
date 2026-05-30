@@ -1,0 +1,17 @@
+---
+# Archbox homelab bootstrap playbook
+# Usage: ansible-playbook -i inventory.ini archbox.yml
+# Run from MikeInspiron or MikePC — targets archbox over SSH
+
+- name: Bootstrap archbox homelab server
+  hosts: archbox
+  become: true
+
+  roles:
+    - base
+    - nftables
+    - tailscale
+    - podman
+    - adguard
+    - crowdsec
+    - agency
