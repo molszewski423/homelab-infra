@@ -1,0 +1,1378 @@
+---
+# ── Namespace ──────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agency
+---
+# ── PersistentVolumes (hostPath → existing Podman volume data) ─────────────────
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: agency-postgres-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /home/mike/.local/share/containers/storage/volumes/agency-postgres-data/_data
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values: [archbox]
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: agency-n8n-pv
+spec:
+  capacity:
+    storage: 2Gi
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /home/mike/.local/share/containers/storage/volumes/agency-n8n-data/_data
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values: [archbox]
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: agency-voice-pv
+spec:
+  capacity:
+    storage: 2Gi
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /home/mike/.local/share/containers/storage/volumes/agency-voice-data/_data
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values: [archbox]
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: agency-data-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /home/mike/.local/share/containers/storage/volumes/agency-data/_data
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values: [archbox]
+---
+# ── PersistentVolumeClaims ─────────────────────────────────────────────────────
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agency-postgres-pvc
+  namespace: agency
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: agency-postgres-pv
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agency-n8n-pvc
+  namespace: agency
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 2Gi
+  volumeName: agency-n8n-pv
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agency-voice-pvc
+  namespace: agency
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 2Gi
+  volumeName: agency-voice-pv
+  storageClassName: ""
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agency-data-pvc
+  namespace: agency
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: agency-data-pv
+  storageClassName: ""
+---
+# ── PostgreSQL ─────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-postgres
+  namespace: agency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agency-postgres
+  template:
+    metadata:
+      labels:
+        app: agency-postgres
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      containers:
+        - name: postgres
+          image: docker.io/postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: agency-env
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: [pg_isready, -U, agency]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "1"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: agency-postgres-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agency-postgres
+  namespace: agency
+spec:
+  selector:
+    app: agency-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+# ── Cloudflare Tunnel ──────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-tunnel
+  namespace: agency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agency-tunnel
+  template:
+    metadata:
+      labels:
+        app: agency-tunnel
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      initContainers:
+        - name: purge-connections
+          image: docker.io/cloudflare/cloudflared:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: agency-env
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              TOKEN=$(echo $CLOUDFLARE_API_TOKEN)
+              curl -sf --max-time 10 -X DELETE \
+                -H "Authorization: Bearer $TOKEN" \
+                "https://api.cloudflare.com/client/v4/accounts/c7f77378cf53b5436dacbc6a8e673cc4/cfd_tunnel/2ef09425-ed87-4c07-a0e4-ecca2041dcdf/connections" || true
+              sleep 3
+      containers:
+        - name: tunnel
+          image: docker.io/cloudflare/cloudflared:latest
+          imagePullPolicy: IfNotPresent
+          args: ["tunnel", "--no-autoupdate", "--loglevel", "info", "--protocol", "http2", "--edge-ip-version", "4", "run"]
+          envFrom:
+            - secretRef:
+                name: agency-env
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+---
+# ── n8n ────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-n8n
+  namespace: agency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agency-n8n
+  template:
+    metadata:
+      labels:
+        app: agency-n8n
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      containers:
+        - name: n8n
+          image: docker.io/n8nio/n8n:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: agency-env
+          volumeMounts:
+            - name: n8n-data
+              mountPath: /home/node/.n8n
+            - name: workflows
+              mountPath: /workflows
+              readOnly: true
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "1"
+      volumes:
+        - name: n8n-data
+          persistentVolumeClaim:
+            claimName: agency-n8n-pvc
+        - name: workflows
+          hostPath:
+            path: /home/mike/agency/n8n/workflows
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agency-n8n
+  namespace: agency
+spec:
+  selector:
+    app: agency-n8n
+  ports:
+    - port: 5678
+      targetPort: 5678
+---
+# ── Cal.com ────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-calcom
+  namespace: agency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agency-calcom
+  template:
+    metadata:
+      labels:
+        app: agency-calcom
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      containers:
+        - name: calcom
+          image: docker.io/calcom/cal.com:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: agency-env
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "2Gi"
+              cpu: "2"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agency-calcom
+  namespace: agency
+spec:
+  selector:
+    app: agency-calcom
+  ports:
+    - port: 3000
+      targetPort: 3000
+---
+# ── Kokoro TTS ─────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-kokoro
+  namespace: agency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agency-kokoro
+  template:
+    metadata:
+      labels:
+        app: agency-kokoro
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      containers:
+        - name: kokoro
+          image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.2.2
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: agency-env
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "2Gi"
+              cpu: "2"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agency-kokoro
+  namespace: agency
+spec:
+  selector:
+    app: agency-kokoro
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+# ── Voice (Speaches) ───────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-voice
+  namespace: agency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agency-voice
+  template:
+    metadata:
+      labels:
+        app: agency-voice
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      containers:
+        - name: voice
+          image: ghcr.io/speaches-ai/speaches:latest-cpu
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: agency-env
+          volumeMounts:
+            - name: voice-cache
+              mountPath: /home/user/.cache
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "2Gi"
+              cpu: "2"
+      volumes:
+        - name: voice-cache
+          persistentVolumeClaim:
+            claimName: agency-voice-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agency-voice
+  namespace: agency
+spec:
+  selector:
+    app: agency-voice
+  ports:
+    - port: 8000
+      targetPort: 8000
+---
+# ── Custom agency services (all use agency-data PVC) ──────────────────────────
+# Macro: each gets Deployment + Service. Ports from CLAUDE.md port map.
+# imagePullPolicy: Never — images imported directly into k3s containerd.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-orchestrator
+  namespace: agency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agency-orchestrator
+  template:
+    metadata:
+      labels:
+        app: agency-orchestrator
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      containers:
+        - name: orchestrator
+          image: localhost/agency-orchestrator:latest
+          imagePullPolicy: Never
+          envFrom:
+            - secretRef:
+                name: agency-env
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: knowledge
+              mountPath: /data/knowledge
+            - name: ssh
+              mountPath: /root/.ssh
+              readOnly: true
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "2"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: agency-data-pvc
+        - name: knowledge
+          hostPath:
+            path: /home/mike/agency/knowledge
+        - name: ssh
+          hostPath:
+            path: /home/mike/.ssh
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agency-orchestrator
+  namespace: agency
+spec:
+  selector:
+    app: agency-orchestrator
+  ports:
+    - port: 8109
+      targetPort: 8109
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-scraper
+  namespace: agency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agency-scraper
+  template:
+    metadata:
+      labels:
+        app: agency-scraper
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      containers:
+        - name: scraper
+          image: localhost/agency-scraper:latest
+          imagePullPolicy: Never
+          envFrom:
+            - secretRef:
+                name: agency-env
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: config
+              mountPath: /config
+              readOnly: true
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "1"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: agency-data-pvc
+        - name: config
+          hostPath:
+            path: /home/mike/agency/scraper
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agency-scraper
+  namespace: agency
+spec:
+  selector:
+    app: agency-scraper
+  ports:
+    - port: 8079
+      targetPort: 8079
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-support
+  namespace: agency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agency-support
+  template:
+    metadata:
+      labels:
+        app: agency-support
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      containers:
+        - name: support
+          image: localhost/agency-support:latest
+          imagePullPolicy: Never
+          envFrom:
+            - secretRef:
+                name: agency-env
+          env:
+            - name: PODMAN_SOCKET
+              value: /dev/null
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "1"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: agency-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agency-support
+  namespace: agency
+spec:
+  selector:
+    app: agency-support
+  ports:
+    - port: 8104
+      targetPort: 8104
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-landing
+  namespace: agency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agency-landing
+  template:
+    metadata:
+      labels:
+        app: agency-landing
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      containers:
+        - name: landing
+          image: localhost/agency-landing:latest
+          imagePullPolicy: Never
+          envFrom:
+            - secretRef:
+                name: agency-env
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agency-landing
+  namespace: agency
+spec:
+  selector:
+    app: agency-landing
+  ports:
+    - port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-dashboard
+  namespace: agency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agency-dashboard
+  template:
+    metadata:
+      labels:
+        app: agency-dashboard
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      containers:
+        - name: dashboard
+          image: localhost/agency-dashboard:latest
+          imagePullPolicy: Never
+          envFrom:
+            - secretRef:
+                name: agency-env
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "1"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: agency-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agency-dashboard
+  namespace: agency
+spec:
+  selector:
+    app: agency-dashboard
+  ports:
+    - port: 8501
+      targetPort: 8501
+---
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-outreach
+  namespace: agency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agency-outreach
+  template:
+    metadata:
+      labels:
+        app: agency-outreach
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      containers:
+        - name: outreach
+          image: localhost/agency-outreach:latest
+          imagePullPolicy: Never
+          envFrom:
+            - secretRef:
+                name: agency-env
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "1"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: agency-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agency-outreach
+  namespace: agency
+spec:
+  selector:
+    app: agency-outreach
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-delivery
+  namespace: agency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agency-delivery
+  template:
+    metadata:
+      labels:
+        app: agency-delivery
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      containers:
+        - name: delivery
+          image: localhost/agency-delivery:latest
+          imagePullPolicy: Never
+          envFrom:
+            - secretRef:
+                name: agency-env
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "1"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: agency-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agency-delivery
+  namespace: agency
+spec:
+  selector:
+    app: agency-delivery
+  ports:
+    - port: 8081
+      targetPort: 8081
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-billing
+  namespace: agency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agency-billing
+  template:
+    metadata:
+      labels:
+        app: agency-billing
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      containers:
+        - name: billing
+          image: localhost/agency-billing:latest
+          imagePullPolicy: Never
+          envFrom:
+            - secretRef:
+                name: agency-env
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "1"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: agency-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agency-billing
+  namespace: agency
+spec:
+  selector:
+    app: agency-billing
+  ports:
+    - port: 8082
+      targetPort: 8082
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-command
+  namespace: agency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agency-command
+  template:
+    metadata:
+      labels:
+        app: agency-command
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      containers:
+        - name: command
+          image: localhost/agency-command:latest
+          imagePullPolicy: Never
+          envFrom:
+            - secretRef:
+                name: agency-env
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "1"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: agency-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agency-command
+  namespace: agency
+spec:
+  selector:
+    app: agency-command
+  ports:
+    - port: 8100
+      targetPort: 8100
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-legal
+  namespace: agency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agency-legal
+  template:
+    metadata:
+      labels:
+        app: agency-legal
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      containers:
+        - name: legal
+          image: localhost/agency-legal:latest
+          imagePullPolicy: Never
+          envFrom:
+            - secretRef:
+                name: agency-env
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "1"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: agency-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agency-legal
+  namespace: agency
+spec:
+  selector:
+    app: agency-legal
+  ports:
+    - port: 8101
+      targetPort: 8101
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-marketing
+  namespace: agency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agency-marketing
+  template:
+    metadata:
+      labels:
+        app: agency-marketing
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      containers:
+        - name: marketing
+          image: localhost/agency-marketing:latest
+          imagePullPolicy: Never
+          envFrom:
+            - secretRef:
+                name: agency-env
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "1"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: agency-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agency-marketing
+  namespace: agency
+spec:
+  selector:
+    app: agency-marketing
+  ports:
+    - port: 8102
+      targetPort: 8102
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-discord
+  namespace: agency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agency-discord
+  template:
+    metadata:
+      labels:
+        app: agency-discord
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      containers:
+        - name: discord
+          image: localhost/agency-discord:latest
+          imagePullPolicy: Never
+          envFrom:
+            - secretRef:
+                name: agency-env
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "1"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: agency-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agency-discord
+  namespace: agency
+spec:
+  selector:
+    app: agency-discord
+  ports:
+    - port: 8103
+      targetPort: 8103
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-success
+  namespace: agency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agency-success
+  template:
+    metadata:
+      labels:
+        app: agency-success
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      containers:
+        - name: success
+          image: localhost/agency-success:latest
+          imagePullPolicy: Never
+          envFrom:
+            - secretRef:
+                name: agency-env
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "1"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: agency-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agency-success
+  namespace: agency
+spec:
+  selector:
+    app: agency-success
+  ports:
+    - port: 8105
+      targetPort: 8105
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-bi
+  namespace: agency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agency-bi
+  template:
+    metadata:
+      labels:
+        app: agency-bi
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      containers:
+        - name: bi
+          image: localhost/agency-bi:latest
+          imagePullPolicy: Never
+          envFrom:
+            - secretRef:
+                name: agency-env
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "1"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: agency-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agency-bi
+  namespace: agency
+spec:
+  selector:
+    app: agency-bi
+  ports:
+    - port: 8106
+      targetPort: 8106
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-sales
+  namespace: agency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agency-sales
+  template:
+    metadata:
+      labels:
+        app: agency-sales
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      containers:
+        - name: sales
+          image: localhost/agency-sales:latest
+          imagePullPolicy: Never
+          envFrom:
+            - secretRef:
+                name: agency-env
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "1"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: agency-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agency-sales
+  namespace: agency
+spec:
+  selector:
+    app: agency-sales
+  ports:
+    - port: 8107
+      targetPort: 8107
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-cfo
+  namespace: agency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agency-cfo
+  template:
+    metadata:
+      labels:
+        app: agency-cfo
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      containers:
+        - name: cfo
+          image: localhost/agency-cfo:latest
+          imagePullPolicy: Never
+          envFrom:
+            - secretRef:
+                name: agency-env
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "1"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: agency-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agency-cfo
+  namespace: agency
+spec:
+  selector:
+    app: agency-cfo
+  ports:
+    - port: 8108
+      targetPort: 8108
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-inbox
+  namespace: agency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agency-inbox
+  template:
+    metadata:
+      labels:
+        app: agency-inbox
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      containers:
+        - name: inbox
+          image: localhost/agency-inbox:latest
+          imagePullPolicy: Never
+          envFrom:
+            - secretRef:
+                name: agency-env
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "1"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: agency-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agency-inbox
+  namespace: agency
+spec:
+  selector:
+    app: agency-inbox
+  ports:
+    - port: 8110
+      targetPort: 8110
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-video
+  namespace: agency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agency-video
+  template:
+    metadata:
+      labels:
+        app: agency-video
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      containers:
+        - name: video
+          image: localhost/agency-video:latest
+          imagePullPolicy: Never
+          envFrom:
+            - secretRef:
+                name: agency-env
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "1"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: agency-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agency-video
+  namespace: agency
+spec:
+  selector:
+    app: agency-video
+  ports:
+    - port: 8111
+      targetPort: 8111
