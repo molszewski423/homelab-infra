@@ -2,6 +2,10 @@
 
 Infrastructure as Code for a 25-service AI agency homelab running on a single low-power server (Intel i3-4130T).
 
+## Architecture
+
+![Architecture](docs/architecture.png)
+
 ## Stack
 
 - **OS:** Arch Linux (archbox)
