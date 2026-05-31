@@ -1,0 +1,59 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argus-bot
+  namespace: ai
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: argus-bot
+  template:
+    metadata:
+      labels:
+        app: argus-bot
+    spec:
+      imagePullSecrets:
+        - name: gitlab-registry
+      nodeSelector:
+        kubernetes.io/hostname: mikepc
+      containers:
+        - name: argus-bot
+          image: registry.gitlab.com/molszewski423/pv-workbench:latest
+          imagePullPolicy: Always
+          command: ["python3", "src/argus_bot.py"]
+          env:
+            - name: OLLAMA_BASE_URL
+              value: http://ollama:11434
+            - name: DISCORD_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: argus-secrets
+                  key: DISCORD_BOT_TOKEN
+          volumeMounts:
+            - name: chroma
+              mountPath: /app/chroma_db
+            - name: output
+              mountPath: /app/output
+            - name: streamlit-secrets
+              mountPath: /app/.streamlit/secrets.toml
+              subPath: secrets.toml
+              readOnly: true
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "1"
+      volumes:
+        - name: chroma
+          persistentVolumeClaim:
+            claimName: pv-workbench-chroma
+        - name: output
+          persistentVolumeClaim:
+            claimName: pv-workbench-output
+        - name: streamlit-secrets
+          secret:
+            secretName: pv-workbench-secrets
