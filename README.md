@@ -50,7 +50,7 @@ Infrastructure as Code for a three-node k3s homelab running a 24-service AI agen
 |---|---|---|---|---|---|
 | **mikepc** | Control plane + GPU | 192.168.4.54 | 100.97.45.57 | RTX 5060 Ti 16 GB, 32 GB RAM | Debian 13 |
 | **archbox** | Worker | 192.168.4.46 | 100.96.122.27 | Intel i3-4130T, 24/7 server | Arch Linux |
-| **mikeinspiron** | Worker | 192.168.4.33 | — (LAN only) | Dell Inspiron, 24/7 lid-closed | Debian 13 |
+| **mikeinspiron** | Worker | 192.168.4.33 | - (LAN only) | Dell Inspiron, 24/7 lid-closed | Debian 13 |
 
 All nodes on the same LAN. kubectl must be run from **mikepc** (control plane).
 
@@ -58,7 +58,7 @@ All nodes on the same LAN. kubectl must be run from **mikepc** (control plane).
 
 ## Namespaces
 
-### `ai` — Clinical AI Platform (all pods pinned to mikepc)
+### `ai` - Clinical AI Platform (all pods pinned to mikepc)
 
 | Deployment | Image | Access |
 |---|---|---|
@@ -69,18 +69,18 @@ All nodes on the same LAN. kubectl must be run from **mikepc** (control plane).
 
 Ollama models: `gemma4:26b` · `gemma4:e4b` · `qwen3:30b` · `qwen2.5:7b` · `nomic-embed-text`
 
-DNS for `ai` apps — add to `/etc/hosts` on each machine:
+DNS for `ai` apps - add to `/etc/hosts` on each machine:
 ```
 192.168.4.54  pv.lan ams.lan
 ```
 
-### `agency` — RingCatch AI Agency (all pods pinned to archbox)
+### `agency` - RingCatch AI Agency (all pods pinned to archbox)
 
 24 services migrated from Podman quadlets to k3s on 2026-05-31.
 
 | Service | Port | Purpose |
 |---|---|---|
-| agency-orchestrator | 8109 | AI brain — FastAPI, 22 tools |
+| agency-orchestrator | 8109 | AI brain - FastAPI, 22 tools |
 | agency-outreach | 8080 | Email sending + /book sales chat (Alex persona) |
 | agency-scraper | 8079 | Google Maps lead scraper |
 | agency-command | 8100 | Dashboard / command center |
@@ -103,7 +103,7 @@ DNS for `ai` apps — add to `/etc/hosts` on each machine:
 | agency-calcom | 3000 | Cal.com booking |
 | agency-kokoro | 8080 | Kokoro TTS |
 | agency-voice | 8000 | Speaches voice service |
-| agency-tunnel | — | Cloudflare tunnel (outbound only) |
+| agency-tunnel | - | Cloudflare tunnel (outbound only) |
 
 Public access via Cloudflare tunnel (no open ports):
 - `ringcatch.io` → `http://agency-landing:80`
@@ -139,7 +139,7 @@ homelab-infra/
 kubectl rollout restart deployment/pv-workbench -n ai
 kubectl rollout restart deployment/ams-intelligence -n ai
 
-# Agency (custom images — must rebuild and reimport on archbox)
+# Agency (custom images - must rebuild and reimport on archbox)
 # 1. Edit code on archbox
 # 2. cd ~/agency/<service> && podman build -t localhost/agency-<service>:latest .
 # 3. podman save localhost/agency-<service>:latest | sudo k3s ctr -n k8s.io images import -
@@ -157,13 +157,13 @@ kubectl get pods -n agency
 ### Secrets
 
 ```bash
-# Registry pull secret (ai namespace — clinical AI images)
+# Registry pull secret (ai namespace - clinical AI images)
 kubectl create secret docker-registry gitlab-registry -n ai \
   --docker-server=registry.gitlab.com \
   --docker-username=<user> \
   --docker-password=<pat-read-registry>
 
-# Agency secrets (from ~/agency/.env on archbox — never commit)
+# Agency secrets (from ~/agency/.env on archbox - never commit)
 kubectl create secret generic agency-env -n agency \
   --from-env-file=/home/mike/agency/.env
 ```
