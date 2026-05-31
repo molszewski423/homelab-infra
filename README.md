@@ -4,42 +4,92 @@ Infrastructure as Code for a three-node k3s homelab running a 24-service AI agen
 
 ---
 
-## Architecture Overview
+## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    k3s Cluster (LAN: 192.168.4.x)               │
-│                                                                  │
-│  ┌──────────────────────┐   ┌──────────────────────────────┐    │
-│  │       mikepc          │   │           archbox            │    │
-│  │  (control plane+GPU)  │   │          (worker)            │    │
-│  │  192.168.4.54         │   │  192.168.4.46                │    │
-│  │  RTX 5060 Ti 16GB     │   │  Intel i3-4130T, 24/7        │    │
-│  │                       │   │                              │    │
-│  │  namespace: ai        │   │  namespace: agency           │    │
-│  │  ┌─────────────────┐  │   │  ┌──────────────────────┐   │    │
-│  │  │ ollama (GPU)    │  │   │  │ 24 agency services   │   │    │
-│  │  │ pv-workbench    │  │   │  │ PostgreSQL           │   │    │
-│  │  │ ams-intelligence│  │   │  │ n8n · Cal.com        │   │    │
-│  │  │ argus-bot       │  │   │  │ Cloudflare tunnel    │   │    │
-│  │  └─────────────────┘  │   │  └──────────────────────┘   │    │
-│  └──────────────────────┘   └──────────────────────────────┘    │
-│                                                                  │
-│  ┌──────────────────────┐                                        │
-│  │    mikeinspiron       │                                        │
-│  │    (worker)           │                                        │
-│  │    192.168.4.33       │                                        │
-│  │    Dell Inspiron,     │                                        │
-│  │    24/7 lid-closed    │                                        │
-│  └──────────────────────┘                                        │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-              Cloudflare Tunnel (no open ports)
-                              │
-              ┌───────────────┴────────────────┐
-              │                                │
-         ringcatch.io                  dashboard.ringcatch.io
-         (agency-landing)              (agency-command)
+```mermaid
+graph TB
+    subgraph INTERNET["Internet"]
+        CF["Cloudflare CDN / Tunnel\n(no open inbound ports)"]
+        DISCORD["Discord API"]
+        GEMINI["Gemini 2.5 Flash"]
+        GROQ["Groq\nllama-3.3-70b / llama-3.1-8b"]
+        GITLAB["GitLab\ngitlab.com/molszewski423"]
+    end
+
+    subgraph CLUSTER["k3s Cluster — LAN 192.168.4.x"]
+
+        subgraph MIKEPC["mikepc — control plane + GPU\n192.168.4.54 / Tailscale 100.97.45.57\nDebian 13 · RTX 5060 Ti 16 GB"]
+            subgraph AI["namespace: ai"]
+                OLLAMA["ollama\ngemma4:26b · gemma4:e4b\nqwen3:30b · qwen2.5:7b\nnomic-embed-text\n[GPU pod]"]
+                PVW["pv-workbench\nStreamlit :8501\nhttp://pv.lan"]
+                AMS["ams-intelligence\nStreamlit :8502\nhttp://ams.lan"]
+                ARGUS["argus-bot\nDiscord bot"]
+                TRAEFIK["Traefik ingress\npv.lan · ams.lan"]
+            end
+            subgraph INFRA["namespace: infra"]
+                GITEA["Gitea\nhttp://git.lan :3000\nSelf-hosted git"]
+            end
+        end
+
+        subgraph ARCHBOX["archbox — worker · 24/7 server\n192.168.4.46 / Tailscale 100.96.122.27\nArch Linux · i3-4130T"]
+            subgraph AGENCY["namespace: agency (24 services)"]
+                ORCH["orchestrator :8109\nAI brain · 22 tools"]
+                LANDING["landing :8090\nnginx · ringcatch.io"]
+                COMMAND["command :8100\ndashboard.ringcatch.io"]
+                OUTREACH["outreach :8080\nemail + chatbot"]
+                SCRAPER["scraper :8079\nGoogle Maps leads"]
+                PG["postgresql-16\nhostPath PVC"]
+                N8N["n8n :5678"]
+                CALCOM["cal.com :3000"]
+                TUNNEL["cloudflared\ntunnel"]
+                OTHER["+ 15 more services\nbilling · legal · marketing\nsupport · success · bi\nsales · cfo · inbox · video\ndiscord · delivery · kokoro · voice"]
+            end
+        end
+
+        subgraph INSPIRON["mikeinspiron — worker · 24/7 lid-closed\n192.168.4.33\nDebian 13 · Dell Inspiron"]
+            CAPACITY["general capacity\n(no workloads pinned here yet)"]
+        end
+
+    end
+
+    %% External traffic
+    CF -->|"ringcatch.io"| LANDING
+    CF -->|"dashboard.ringcatch.io"| COMMAND
+    DISCORD <-->|"Argus#1432"| ARGUS
+
+    %% Internal AI connections
+    PVW --> OLLAMA
+    AMS --> OLLAMA
+    ARGUS --> OLLAMA
+    ARGUS --> PVW
+
+    %% Agency LLM routing
+    ORCH -->|"primary"| GEMINI
+    ORCH -->|"fallback 1"| OLLAMA
+    ORCH -->|"fallback 2/3"| GROQ
+
+    %% Git mirrors
+    GITEA <-->|"push mirror"| GITLAB
+
+    %% Traefik routing
+    TRAEFIK --> PVW
+    TRAEFIK --> AMS
+
+    %% Agency internal
+    TUNNEL --> CF
+    LANDING --> OUTREACH
+    ORCH --> SCRAPER
+    ORCH --> OUTREACH
+    ORCH --> PG
+
+    style MIKEPC fill:#1a1a2e,color:#e0e0e0,stroke:#4a4a8a
+    style ARCHBOX fill:#1a2e1a,color:#e0e0e0,stroke:#4a8a4a
+    style INSPIRON fill:#2e1a1a,color:#e0e0e0,stroke:#8a4a4a
+    style AI fill:#0d1117,color:#e0e0e0,stroke:#3d5a80
+    style AGENCY fill:#0d1117,color:#e0e0e0,stroke:#3d6e3d
+    style INFRA fill:#0d1117,color:#e0e0e0,stroke:#6e3d6e
+    style INTERNET fill:#0a0a0a,color:#e0e0e0,stroke:#555
+    style CLUSTER fill:#111,color:#e0e0e0,stroke:#666
 ```
 
 ---
