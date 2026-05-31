@@ -95,3 +95,12 @@ OLLAMA_BASE_URL=http://100.97.45.57:11434   # ~/agency/.env
 ```
 
 This replaces the previous direct `ollama.service` systemd unit on mikepc (stopped 2026-05-31).
+
+### Node added 2026-05-31: mikeinspiron
+
+| Node | Role | LAN IP | Hardware |
+|---|---|---|---|
+| **mikeinspiron** | Worker | 192.168.4.33 | Dell Inspiron, Hyprland (screen-off on lid close), 24/7 |
+
+Sleep/suspend masked on MikeInspiron. Hyprland stays logged in for occasional local use.
+ThinkPad (arriving 2026-06-01) will be the remote daily driver — not a cluster node.
