@@ -1,106 +1,187 @@
 # homelab-infra
 
-Infrastructure as Code for a 25-service AI agency homelab running on a single low-power server (Intel i3-4130T).
+Infrastructure as Code for a three-node k3s homelab running a 24-service AI agency platform and a local clinical AI platform.
 
-## Architecture
+---
 
-![Architecture](docs/architecture.png)
+## Architecture Overview
 
-## Stack
-
-- **OS:** Arch Linux (archbox)
-- **Containers:** Rootless Podman with systemd quadlets
-- **Networking:** Cloudflare Tunnel (no open ports)
-- **LLM routing:** Gemini 2.5 Flash → Ollama (MikePC RTX 5060 Ti) → Groq fallback
-
-## Structure
-
-| Directory | Description |
-|---|---|
-| `quadlets/` | Systemd quadlet container units (Podman) |
-| `nginx/` | Nginx reverse proxy configs |
-| `scripts/` | Tunnel management, backup, and deploy scripts |
-| `landing/` | RingCatch landing page |
-
-## Services (25 containers in agency-pod)
-
-| Service | Port | Purpose |
-|---|---|---|
-| agency-orchestrator | 8109 | AI brain  -  FastAPI, 22 tools |
-| agency-outreach | 8080 | Email sending + booking chat |
-| agency-scraper | 8079 | Google Maps lead scraper |
-| agency-command | 8100 | Dashboard / command center |
-| agency-discord | 8103 | Discord bot bridge |
-| agency-billing | 8082 | Billing service |
-| agency-landing | 8090 | Public landing page |
-
-## Deployment
-
-```bash
-# Deploy quadlets
-cp quadlets/* ~/.config/containers/systemd/
-systemctl --user daemon-reload
-systemctl --user start agency-pod
-
-# Tunnel
-bash scripts/tunnel-setup.sh
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    k3s Cluster (LAN: 192.168.4.x)               │
+│                                                                  │
+│  ┌──────────────────────┐   ┌──────────────────────────────┐    │
+│  │       mikepc          │   │           archbox            │    │
+│  │  (control plane+GPU)  │   │          (worker)            │    │
+│  │  192.168.4.54         │   │  192.168.4.46                │    │
+│  │  RTX 5060 Ti 16GB     │   │  Intel i3-4130T, 24/7        │    │
+│  │                       │   │                              │    │
+│  │  namespace: ai        │   │  namespace: agency           │    │
+│  │  ┌─────────────────┐  │   │  ┌──────────────────────┐   │    │
+│  │  │ ollama (GPU)    │  │   │  │ 24 agency services   │   │    │
+│  │  │ pv-workbench    │  │   │  │ PostgreSQL           │   │    │
+│  │  │ ams-intelligence│  │   │  │ n8n · Cal.com        │   │    │
+│  │  │ argus-bot       │  │   │  │ Cloudflare tunnel    │   │    │
+│  │  └─────────────────┘  │   │  └──────────────────────┘   │    │
+│  └──────────────────────┘   └──────────────────────────────┘    │
+│                                                                  │
+│  ┌──────────────────────┐                                        │
+│  │    mikeinspiron       │                                        │
+│  │    (worker)           │                                        │
+│  │    192.168.4.33       │                                        │
+│  │    Dell Inspiron,     │                                        │
+│  │    24/7 lid-closed    │                                        │
+│  └──────────────────────┘                                        │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+              Cloudflare Tunnel (no open ports)
+                              │
+              ┌───────────────┴────────────────┐
+              │                                │
+         ringcatch.io                  dashboard.ringcatch.io
+         (agency-landing)              (agency-command)
 ```
 
 ---
 
-## k3s Cluster (Clinical AI Platform)
+## Nodes
 
-archbox joined a two-node **k3s cluster** on 2026-05-31 as the worker node for a separate clinical AI workload platform (distinct from the agency Podman pod).
+| Node | Role | LAN IP | Tailscale IP | Hardware | OS |
+|---|---|---|---|---|---|
+| **mikepc** | Control plane + GPU | 192.168.4.54 | 100.97.45.57 | RTX 5060 Ti 16 GB, 32 GB RAM | Debian 13 |
+| **archbox** | Worker | 192.168.4.46 | 100.96.122.27 | Intel i3-4130T, 24/7 server | Arch Linux |
+| **mikeinspiron** | Worker | 192.168.4.33 | — (LAN only) | Dell Inspiron, 24/7 lid-closed | Debian 13 |
 
-### Cluster Topology
+All nodes on the same LAN. kubectl must be run from **mikepc** (control plane).
 
-| Node | Role | LAN IP | Tailscale IP | Hardware |
-|---|---|---|---|---|
-| **mikepc** | Control plane + GPU | 192.168.4.54 | 100.97.45.57 | RTX 5060 Ti 16 GB |
-| **archbox** | Worker | 192.168.4.46 | 100.96.122.27 | i3-4130T (this machine) |
+---
 
-### Workloads (ai namespace)
+## Namespaces
 
-| Deployment | Image | Access | Pinned to |
-|---|---|---|---|
-| `ollama` | `ollama/ollama:latest` | `http://ollama:11434` (in-cluster) | mikepc (GPU) |
-| `pv-workbench` | `registry.gitlab.com/molszewski423/pv-workbench:latest` | http://pv.lan | mikepc |
-| `argus-bot` | `registry.gitlab.com/molszewski423/pv-workbench:latest` | Discord | mikepc |
-| `ams-intelligence` | `registry.gitlab.com/molszewski423/ams-intelligence:latest` | http://ams.lan | mikepc |
+### `ai` — Clinical AI Platform (all pods pinned to mikepc)
 
-All GPU workloads pinned to mikepc via `nodeSelector: kubernetes.io/hostname: mikepc`. archbox serves as capacity for future non-GPU workloads.
+| Deployment | Image | Access |
+|---|---|---|
+| `ollama` | `ollama/ollama:latest` | `http://ollama:11434` (in-cluster) |
+| `pv-workbench` | `registry.gitlab.com/molszewski423/pv-workbench:latest` | http://pv.lan |
+| `ams-intelligence` | `registry.gitlab.com/molszewski423/ams-intelligence:latest` | http://ams.lan |
+| `argus-bot` | `registry.gitlab.com/molszewski423/pv-workbench:latest` | Discord (Argus#1432) |
 
-### Ingress
+Ollama models: `gemma4:26b` · `gemma4:e4b` · `qwen3:30b` · `qwen2.5:7b` · `nomic-embed-text`
 
-Traefik (k3s built-in) binds on both node Tailscale IPs. DNS via `/etc/hosts`:
-
+DNS for `ai` apps — add to `/etc/hosts` on each machine:
 ```
-# LAN access
 192.168.4.54  pv.lan ams.lan
-
-# Tailscale (remote)
-100.97.45.57  pv.lan ams.lan
 ```
 
-### Coexistence with Agency Pod
+### `agency` — RingCatch AI Agency (all pods pinned to archbox)
 
-The k3s agent (containerd) and the Podman agency-pod run independently on archbox with no port conflicts. Agency services use ports 8079-8112; k3s uses the standard 6443/10250 range. The two stacks do not share container runtimes.
+24 services migrated from Podman quadlets to k3s on 2026-05-31.
 
-### LLM Routing (agency-pod to k3s Ollama)
+| Service | Port | Purpose |
+|---|---|---|
+| agency-orchestrator | 8109 | AI brain — FastAPI, 22 tools |
+| agency-outreach | 8080 | Email sending + /book sales chat (Alex persona) |
+| agency-scraper | 8079 | Google Maps lead scraper |
+| agency-command | 8100 | Dashboard / command center |
+| agency-landing | 80 (nginx on 8090) | ringcatch.io public site |
+| agency-discord | 8103 | Discord bot bridge |
+| agency-billing | 8082 | Billing service |
+| agency-legal | 8101 | Legal service |
+| agency-marketing | 8102 | Marketing service |
+| agency-support | 8104 | Tech support monitor |
+| agency-success | 8105 | Customer success |
+| agency-bi | 8106 | Business intelligence |
+| agency-sales | 8107 | Sales service |
+| agency-cfo | 8108 | CFO service |
+| agency-inbox | 8110 | Email inbox monitor |
+| agency-delivery | 8081 | Email delivery |
+| agency-video | 8111 | YouTube Short generation |
+| agency-dashboard | 8501 | Internal dashboard |
+| agency-postgres | 5432 | PostgreSQL 16 (stateful PVC) |
+| agency-n8n | 5678 | n8n workflow automation |
+| agency-calcom | 3000 | Cal.com booking |
+| agency-kokoro | 8080 | Kokoro TTS |
+| agency-voice | 8000 | Speaches voice service |
+| agency-tunnel | — | Cloudflare tunnel (outbound only) |
 
-The agency orchestrator routes to Ollama running inside k3s on mikepc:
+Public access via Cloudflare tunnel (no open ports):
+- `ringcatch.io` → `http://agency-landing:80`
+- `dashboard.ringcatch.io` → `http://agency-command:8100`
+
+---
+
+## Repository Structure
 
 ```
-OLLAMA_BASE_URL=http://100.97.45.57:11434   # ~/agency/.env
+homelab-infra/
+├── k8s/
+│   ├── agency.yaml          # All 24 agency Deployments + Services + PVCs
+│   ├── ollama.yaml          # Ollama GPU pod
+│   ├── pv-workbench.yaml    # PV Workbench + PVCs
+│   ├── ams-intelligence.yaml
+│   ├── argus.yaml           # Argus Discord bot
+│   └── ingress.yaml         # Traefik ingress rules (pv.lan, ams.lan)
+├── quadlets/                # Legacy Podman quadlets (archived, superseded by k8s/)
+├── scripts/                 # Cloudflare tunnel setup, backup scripts
+└── docs/
+    └── architecture.png
 ```
 
-This replaces the previous direct `ollama.service` systemd unit on mikepc (stopped 2026-05-31).
+---
 
-### Node added 2026-05-31: mikeinspiron
+## Operations
 
-| Node | Role | LAN IP | Hardware |
-|---|---|---|---|
-| **mikeinspiron** | Worker | 192.168.4.33 | Dell Inspiron, Hyprland (screen-off on lid close), 24/7 |
+### Deploy / update a service
 
-Sleep/suspend masked on MikeInspiron. Hyprland stays logged in for occasional local use.
-ThinkPad (arriving 2026-06-01) will be the remote daily driver — not a cluster node.
+```bash
+# Clinical AI (images from GitLab registry)
+kubectl rollout restart deployment/pv-workbench -n ai
+kubectl rollout restart deployment/ams-intelligence -n ai
+
+# Agency (custom images — must rebuild and reimport on archbox)
+# 1. Edit code on archbox
+# 2. cd ~/agency/<service> && podman build -t localhost/agency-<service>:latest .
+# 3. podman save localhost/agency-<service>:latest | sudo k3s ctr -n k8s.io images import -
+# 4. kubectl rollout restart deployment/agency-<service> -n agency
+```
+
+### Check cluster health
+
+```bash
+kubectl get nodes
+kubectl get pods -n ai
+kubectl get pods -n agency
+```
+
+### Secrets
+
+```bash
+# Registry pull secret (ai namespace — clinical AI images)
+kubectl create secret docker-registry gitlab-registry -n ai \
+  --docker-server=registry.gitlab.com \
+  --docker-username=<user> \
+  --docker-password=<pat-read-registry>
+
+# Agency secrets (from ~/agency/.env on archbox — never commit)
+kubectl create secret generic agency-env -n agency \
+  --from-env-file=/home/mike/agency/.env
+```
+
+### LLM routing
+
+All LLM inference runs on the **Ollama k3s pod** on mikepc (RTX 5060 Ti):
+- From `ai` namespace: `http://ollama:11434`
+- From `agency` namespace or archbox host: `http://100.97.45.57:11434`
+
+---
+
+## Migration history
+
+| Date | Change |
+|---|---|
+| 2026-05-31 | k3s cluster created (mikepc + archbox) |
+| 2026-05-31 | Ollama migrated from systemd service → k3s GPU pod |
+| 2026-05-31 | pv-workbench, ams-intelligence, argus-bot deployed to k3s |
+| 2026-05-31 | RingCatch agency migrated from Podman quadlets → k3s (24 services) |
+| 2026-05-31 | mikeinspiron joined cluster as 3rd worker node |
