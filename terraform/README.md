@@ -1,4 +1,4 @@
-# Terraform — RingCatch AWS Infrastructure
+# Terraform  -  RingCatch AWS Infrastructure
 
 Provisions the EC2 instance, security group, EBS volumes, Elastic IP,
 and key pair for the RingCatch hybrid AWS deployment.
@@ -27,7 +27,7 @@ cd homelab-infra/terraform
 
 # 1. Copy example vars and fill in your home IP
 cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars — set home_ip to output of: curl ifconfig.me
+# Edit terraform.tfvars  -  set home_ip to output of: curl ifconfig.me
 
 # 2. Initialise (downloads AWS provider)
 terraform init
@@ -35,7 +35,7 @@ terraform init
 # 3. Preview what will be created
 terraform plan
 
-# 4. Apply (creates real AWS resources — costs money)
+# 4. Apply (creates real AWS resources  -  costs money)
 terraform apply
 
 # 5. Get SSH command
@@ -49,8 +49,8 @@ terraform output ssh_command
 | `aws_key_pair` | Uploads `~/.ssh/id_ed25519.pub` to AWS |
 | `aws_security_group` | SSH from home IP only, Tailscale UDP, all outbound |
 | `aws_instance` | t3.small, Ubuntu 22.04, Podman + Tailscale pre-installed |
-| `aws_eip` | Elastic IP — stable public IP across reboots |
-| `aws_ebs_volume` | 10GB gp3, encrypted — for PostgreSQL data |
+| `aws_eip` | Elastic IP  -  stable public IP across reboots |
+| `aws_ebs_volume` | 10GB gp3, encrypted  -  for PostgreSQL data |
 | `aws_volume_attachment` | Attaches data volume at `/dev/xvdb` |
 
 ## After Apply
@@ -75,18 +75,18 @@ Then follow the deployment steps in `../docs/AWS-MIGRATION.md` (ringcatch-agency
 
 ```bash
 terraform destroy
-# Confirms before deleting — stops billing immediately
+# Confirms before deleting  -  stops billing immediately
 ```
 
 ## Module Structure
 
 ```
 terraform/
-├── main.tf                   # Root — wires modules together
+├── main.tf                   # Root  -  wires modules together
 ├── providers.tf              # AWS provider + Terraform version
 ├── variables.tf              # All input variables
 ├── outputs.tf                # EC2 IP, SSH command, etc.
-├── terraform.tfvars.example  # Template — copy to terraform.tfvars
+├── terraform.tfvars.example  # Template  -  copy to terraform.tfvars
 ├── .gitignore                # Excludes state, .tfvars, .terraform/
 └── modules/
     ├── networking/           # Security group

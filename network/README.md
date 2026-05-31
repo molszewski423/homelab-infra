@@ -64,7 +64,7 @@ Full mesh VPN across all machines. Archbox acts as exit node.
 
 ## Cloudflare Tunnel
 
-Zero-trust tunnel — no open inbound ports on the router.
+Zero-trust tunnel  -  no open inbound ports on the router.
 Services exposed: ringcatch.io (landing), dashboard.ringcatch.io (command center).
 
 Runs as a Podman container in the agency pod. Config: `../quadlets/agency-tunnel.container`

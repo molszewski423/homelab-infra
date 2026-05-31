@@ -1,4 +1,4 @@
-# Ansible — Archbox Bootstrap
+# Ansible  -  Archbox Bootstrap
 
 Automates full archbox setup from a fresh Arch Linux install.
 
@@ -38,7 +38,7 @@ ansible-playbook -i inventory.ini archbox.yml --tags nftables
 |---|---|
 | `base` | Package cache, core tools, SSH, IP forwarding, linger |
 | `nftables` | Firewall with default-drop policy |
-| `tailscale` | VPN mesh — prompts for manual auth if not authenticated |
+| `tailscale` | VPN mesh  -  prompts for manual auth if not authenticated |
 | `podman` | Rootless Podman, subuid/subgid, quadlet deployment |
 | `adguard` | DNS-level ad blocking, disables systemd-resolved |
 | `crowdsec` | Intrusion detection + nftables bouncer |
@@ -47,6 +47,6 @@ ansible-playbook -i inventory.ini archbox.yml --tags nftables
 ## Notes
 
 - Tailscale auth requires manual `sudo tailscale up --advertise-exit-node` after first run
-- `.env` for agency pod must be copied manually — never in git
-- AdGuardHome.yaml has passwords redacted — restore from backup before running adguard role
+- `.env` for agency pod must be copied manually  -  never in git
+- AdGuardHome.yaml has passwords redacted  -  restore from backup before running adguard role
 - Run from inside the LAN or over Tailscale

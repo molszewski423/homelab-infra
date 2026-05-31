@@ -22,7 +22,7 @@ Infrastructure as Code for a 25-service AI agency homelab running on a single lo
 
 | Service | Port | Purpose |
 |---|---|---|
-| agency-orchestrator | 8109 | AI brain — FastAPI, 22 tools |
+| agency-orchestrator | 8109 | AI brain  -  FastAPI, 22 tools |
 | agency-outreach | 8080 | Email sending + booking chat |
 | agency-scraper | 8079 | Google Maps lead scraper |
 | agency-command | 8100 | Dashboard / command center |
