@@ -257,6 +257,8 @@ spec:
         - --no-autoupdate
         - --loglevel
         - info
+        - --metrics
+        - localhost:2000
         - --protocol
         - http2
         - --edge-ip-version
