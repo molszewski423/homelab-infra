@@ -1,12 +1,16 @@
-# Copy to terraform.tfvars and fill in values
-# terraform.tfvars is gitignored — never commit it
+# Copy to terraform.tfvars — never commit that file
 
+# AWS
+home_ip             = "YOUR_HOME_IP"   # curl ifconfig.me
 aws_region          = "us-east-1"
 instance_type       = "t3.small"
 key_name            = "ringcatch-key"
 public_key_path     = "~/.ssh/id_ed25519.pub"
-data_volume_size_gb = 10
 root_volume_size_gb = 20
+data_volume_size_gb = 10
 
-# Your home public IP — run: curl ifconfig.me
-home_ip = "YOUR_HOME_IP_HERE"
+# Cloudflare — tokens in ~/agency/.env on archbox
+cloudflare_api_token  = "cfut_..."
+cloudflare_account_id = "..."          # Cloudflare dashboard → account ID
+cloudflare_zone_id    = "5fa18274dc370ccb5b4494fbecef2814"
+cloudflare_tunnel_id  = "2ef09425-ed87-4c07-a0e4-ecca2041dcdf"

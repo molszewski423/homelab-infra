@@ -1,0 +1,53 @@
+stages:
+  - validate
+  - plan
+  - apply
+
+variables:
+  TF_ROOT: terraform
+  TF_VERSION: "1.9.8"
+
+.terraform:
+  image: hashicorp/terraform:1.9.8
+  before_script:
+    - cd ${TF_ROOT}
+    - terraform init
+  cache:
+    key: terraform
+    paths:
+      - ${TF_ROOT}/.terraform
+
+validate:
+  extends: .terraform
+  stage: validate
+  script:
+    - terraform validate
+    - terraform fmt -check -recursive
+
+plan:
+  extends: .terraform
+  stage: plan
+  script:
+    - terraform plan -out=tfplan
+  artifacts:
+    paths:
+      - ${TF_ROOT}/tfplan
+    expire_in: 1 week
+  environment:
+    name: homelab
+  only:
+    - merge_requests
+    - master
+
+apply:
+  extends: .terraform
+  stage: apply
+  script:
+    - terraform apply -auto-approve tfplan
+  dependencies:
+    - plan
+  environment:
+    name: homelab
+  when: manual
+  only:
+    - master
