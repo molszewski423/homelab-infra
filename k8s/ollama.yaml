@@ -67,8 +67,12 @@ spec:
           resources:
             requests:
               nvidia.com/gpu: "1"
+              memory: "2Gi"
+              cpu: "500m"
             limits:
               nvidia.com/gpu: "1"
+              memory: "24Gi"
+              cpu: "8"
           env:
             - name: OLLAMA_HOST
               value: "0.0.0.0:11434"
