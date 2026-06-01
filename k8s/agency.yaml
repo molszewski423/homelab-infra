@@ -453,7 +453,6 @@ spec:
   ports:
   - port: 8000
     targetPort: 8000
---- null
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -722,7 +721,6 @@ spec:
   ports:
   - port: 8501
     targetPort: 8501
---- null
 ---
 apiVersion: apps/v1
 kind: Deployment
