@@ -8,7 +8,7 @@ Infrastructure as Code for a three-node k3s homelab running a local clinical AI 
 
 ## Cluster Architecture
 
-![Architecture](docs/architecture.png)
+![Architecture](docs/cluster-architecture.png)
 
 
 
