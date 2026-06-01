@@ -252,6 +252,13 @@ spec:
         envFrom:
         - secretRef:
             name: agency-env
+        livenessProbe:
+          httpGet:
+            path: /ready
+            port: 2000
+          initialDelaySeconds: 30
+          periodSeconds: 60
+          failureThreshold: 3
         resources:
           requests:
             memory: 16Mi
