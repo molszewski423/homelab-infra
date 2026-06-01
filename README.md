@@ -8,45 +8,9 @@ Infrastructure as Code for a three-node k3s homelab running a local clinical AI 
 
 ## Cluster Architecture
 
-```mermaid
-graph TB
-    subgraph CLUSTER["k3s Cluster — 192.168.4.x"]
-        subgraph MIKEPC["mikepc — control plane + GPU (RTX 5060 Ti)"]
-            subgraph AI["namespace: ai"]
-                OLLAMA["ollama :11434\ngemma4:26b · qwen3:30b · nomic-embed-text"]
-                PVW["pv-workbench :8501\nhttp://pv.lan"]
-                AMS["ams-intelligence :8502\nhttp://ams.lan"]
-                ARGUS["argus-bot\nDiscord"]
-            end
-            subgraph INFRA["namespace: infra"]
-                GITEA["gitea :3000\nhttp://git.lan"]
-            end
-            TFK["Traefik ingress"]
-        end
-        subgraph ARCHBOX["archbox — worker (i3-4130T, 24/7)"]
-            subgraph AGENCY["namespace: agency — 24 services"]
-                ORCH["orchestrator :8109"]
-                LND["landing :80\nringcatch.io"]
-                CMD["command :8100\ndashboard.ringcatch.io"]
-                TUN["cloudflared tunnel"]
-                PG["postgres :5432"]
-            end
-        end
-        subgraph INSPIRON["mikeinspiron — worker (LAN only)"]
-        end
-    end
+![Architecture](docs/architecture.png)
 
-    CF["Cloudflare"] --> TUN --> LND
-    TUN --> CMD
-    TFK --> PVW
-    TFK --> AMS
-    PVW --> OLLAMA
-    AMS --> OLLAMA
-    ARGUS --> OLLAMA
-    ORCH -->|primary| GEMINI["Gemini 2.5 Flash"]
-    ORCH -->|fallback| OLLAMA
-    GITEA <-->|mirror| GITLAB["gitlab.com"]
-```
+
 
 ---
 
