@@ -307,3 +307,11 @@ Service: `homelab-firewall.service` (enabled, persists across reboots)
 | 2026-05-31 | RingCatch agency migrated from Podman quadlets to k3s (24 services) |
 | 2026-05-31 | mikeinspiron joined as 3rd worker node |
 | 2026-05-31 | kubeconfig locked down: k3s.yaml chmod 600, user copy at ~/.kube/config |
+
+---
+
+## Build Documentation
+
+The day-one cluster build — how every component was set up, architectural decisions, lessons learned, and the full phase-by-phase walkthrough — is documented separately in **[k3s-homelab](https://gitlab.com/molszewski423/k3s-homelab)**.
+
+This repo (homelab-infra) is the operational IaC: manifests you apply, Terraform you run, pipelines that validate. k3s-homelab is the narrative behind why it is built this way.
