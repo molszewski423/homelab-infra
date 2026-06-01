@@ -209,6 +209,8 @@ metadata:
   namespace: agency
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: agency-tunnel
@@ -221,7 +223,7 @@ spec:
         kubernetes.io/hostname: archbox
       initContainers:
       - name: purge-connections
-        image: docker.io/alpine:latest
+        image: docker.io/curlimages/curl:latest
         imagePullPolicy: IfNotPresent
         envFrom:
         - secretRef:
