@@ -363,7 +363,7 @@ spec:
             name: agency-env
         resources:
           requests:
-            memory: 512Mi
+            memory: 768Mi
             cpu: 100m
           limits:
             memory: 1500Mi
@@ -407,7 +407,7 @@ spec:
             name: agency-env
         resources:
           requests:
-            memory: 512Mi
+            memory: 1Gi
             cpu: 100m
           limits:
             memory: 2Gi
@@ -570,10 +570,10 @@ spec:
           readOnly: true
         resources:
           requests:
-            memory: 256Mi
-            cpu: 100m
+            memory: 512Mi
+            cpu: 200m
           limits:
-            memory: 768Mi
+            memory: 1200Mi
             cpu: 1000m
       volumes:
       - name: data
