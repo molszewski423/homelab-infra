@@ -145,6 +145,19 @@ k8s/
 ├── ingress.yaml           # Traefik IngressRoutes: pv.lan, ams.lan, git.lan
 ├── gitea.yaml             # Gitea + PVC
 └── agency.yaml            # All 24 agency Deployments + Services + PVCs
+
+terraform/
+├── cloudflare/            # Applied — Cloudflare DNS + tunnel ingress as code
+│   ├── main.tf            # DNS records + tunnel config (ringcatch.io, dashboard, cfo, n8n)
+│   ├── providers.tf       # Cloudflare provider ~4.0
+│   └── variables.tf       # api_token, zone_id, account_id, tunnel_id
+└── aws/                   # Ready — apply when AWS account exists
+    ├── main.tf            # EC2 + Elastic IP + EBS data volume
+    ├── providers.tf       # AWS provider ~5.0
+    ├── variables.tf       # Region, instance type, key, home IP, volume sizes
+    └── modules/
+        ├── ec2/           # Instance, key pair, EIP, EBS, user_data bootstrap
+        └── networking/    # Security group: SSH home-only, Tailscale UDP, outbound all
 ```
 
 ---
