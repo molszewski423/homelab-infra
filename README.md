@@ -21,7 +21,7 @@ Infrastructure as Code for a three-node k3s homelab running a local clinical AI 
 | **mikepc** | Control plane | 192.168.4.54 | 100.97.45.57 | RTX 5060 Ti 16 GB, 32 GB RAM | Debian 13 |
 | **archbox** | Worker | 192.168.4.46 | 100.96.122.27 | Intel i3-4130T, 24/7 | Arch Linux |
 | **mikeinspiron** | Worker | 192.168.4.33 | - (LAN only) | Dell Inspiron 3501 · i5-1035G1 · 8 GB RAM | Debian 13 |
-| **ThinkPad** | Daily driver (not a cluster node) | - | - | arriving 2026-06-01 | Debian 13 |
+| **ThinkPad T14 Gen 2** | Daily driver (not a cluster node) | - | Tailscale | i7-1185G7 · 32 GB RAM · 512 GB SSD · WiFi 6 | Debian 13 |
 
 kubectl must be run from **mikepc** (control plane). Worker nodes do not have kubectl configured.
 
