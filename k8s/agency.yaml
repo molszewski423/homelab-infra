@@ -331,7 +331,7 @@ spec:
         app: agency-calcom
     spec:
       nodeSelector:
-        kubernetes.io/hostname: archbox
+        kubernetes.io/hostname: mikepc
       containers:
       - name: calcom
         image: docker.io/calcom/cal.com:latest
@@ -375,7 +375,7 @@ spec:
         app: agency-kokoro
     spec:
       nodeSelector:
-        kubernetes.io/hostname: archbox
+        kubernetes.io/hostname: mikepc
       containers:
       - name: kokoro
         image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.2.2
