@@ -4,50 +4,56 @@ stages:
   - apply
 
 variables:
-  TF_ROOT: terraform
-  TF_VERSION: "1.9.8"
+  TF_IMAGE: hashicorp/terraform:1.9.8
 
 .terraform:
-  image: hashicorp/terraform:1.9.8
-  before_script:
-    - cd ${TF_ROOT}
-    - terraform init
+  image:
+    name: $TF_IMAGE
+    entrypoint: [""]
   cache:
-    key: terraform
+    key: terraform-$CI_JOB_NAME
     paths:
-      - ${TF_ROOT}/.terraform
+      - $TF_DIR/.terraform
 
-validate:
+# Cloudflare — always runs, credentials via CI/CD variables
+validate:cloudflare:
   extends: .terraform
   stage: validate
+  variables:
+    TF_DIR: terraform/cloudflare
+  before_script:
+    - cd $TF_DIR
+    - terraform init -backend=false
   script:
     - terraform validate
     - terraform fmt -check -recursive
 
-plan:
+plan:cloudflare:
   extends: .terraform
   stage: plan
+  variables:
+    TF_DIR: terraform/cloudflare
+    TF_VAR_cloudflare_api_token: $CLOUDFLARE_API_TOKEN
+  before_script:
+    - cd $TF_DIR
+    - terraform init -backend=false
   script:
-    - terraform plan -out=tfplan
-  artifacts:
-    paths:
-      - ${TF_ROOT}/tfplan
-    expire_in: 1 week
-  environment:
-    name: homelab
+    - terraform plan
   only:
     - merge_requests
     - master
 
-apply:
+# AWS — skipped until AWS_ACCESS_KEY_ID is set in CI/CD variables
+validate:aws:
   extends: .terraform
-  stage: apply
+  stage: validate
+  variables:
+    TF_DIR: terraform/aws
+  before_script:
+    - cd $TF_DIR
+    - terraform init -backend=false
   script:
-    - terraform apply -auto-approve tfplan
-  dependencies:
-    - plan
-  environment:
-    name: homelab
-  when: manual
-  only:
-    - master
+    - terraform validate
+    - terraform fmt -check -recursive
+  rules:
+    - if: $AWS_ACCESS_KEY_ID != null && $AWS_ACCESS_KEY_ID != ""
