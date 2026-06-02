@@ -1,26 +1,38 @@
-# k3s Cluster over Tailscale - MikePC + archbox
+# k3s Cluster - MikePC + archbox + MikeInspiron
 
-**Date:** 2026-05-31
+**Updated:** 2026-06-01
 **k3s version:** v1.35.5+k3s1
-**Status:** Running - 2 nodes, cross-node networking verified
+**Status:** Running - 3 nodes, LAN networking (flannel VXLAN over LAN)
+
+> **2026-06-01:** Migrated from Tailscale-based flannel to LAN-based flannel.
+> MikePC got a new Tailscale IP after Debian 13 migration, breaking cross-node VXLAN.
+> Cluster now routes flannel traffic directly over the home LAN.
 
 ## Cluster
 
-| Node | Role | IP | OS | Kernel |
+| Node | Role | LAN IP | OS | Kernel |
 |---|---|---|---|---|
-| mikepc | control-plane + worker | 100.97.45.57 | Debian 13 | 6.12.90 |
-| archbox | worker | 100.96.122.27 | Arch Linux | 7.0.10-arch1 |
-| MikeInspiron | worker (pending) | 192.168.4.29 | Debian 13 | - |
-
-All nodes communicate via Tailscale WireGuard mesh - no open ports required.
+| mikepc | control-plane | 192.168.4.54 | Debian 13 | 6.12.90 |
+| archbox | worker | 192.168.4.45 | Arch Linux | 7.0.10-arch1 |
+| mikeinspiron | worker | 192.168.4.29 | Debian 13 | - |
 
 ## Install - Control Plane (MikePC, Debian 13)
 
 ```bash
-curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--node-ip=100.97.45.57 --flannel-iface=tailscale0 --write-kubeconfig-mode=644" sh -
+curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--node-ip=192.168.4.54 --tls-san=192.168.4.54 --write-kubeconfig-mode=644" sh -
 ```
 
-Get join token after install:
+Or edit `/etc/systemd/system/k3s.service` directly:
+
+```
+ExecStart=/usr/local/bin/k3s \
+    server \
+    '--node-ip=192.168.4.54' \
+    '--write-kubeconfig-mode=644' \
+    '--tls-san=192.168.4.54' \
+```
+
+Get join token:
 
 ```bash
 sudo cat /var/lib/rancher/k3s/server/node-token
@@ -28,44 +40,68 @@ sudo cat /var/lib/rancher/k3s/server/node-token
 
 ## Install - Worker Node (archbox, Arch Linux)
 
-Fish shell syntax:
-
-```fish
-set -x K3S_URL "https://100.97.45.57:6443"
-set -x K3S_TOKEN "<token from above>"
-set -x INSTALL_K3S_EXEC "agent --node-ip=100.96.122.27 --flannel-iface=tailscale0"
-curl -sfL https://get.k3s.io | sh -
-```
-
-## Gotcha - Token Line Break
-
-When pasting the join token in a terminal, long tokens can wrap and introduce
-a literal newline character. The service env file ends up with something like:
+Create `/etc/systemd/system/k3s-agent.service.env`:
 
 ```
-K3S_TOKEN=...::server:6370d677c8n 41a25399...
-                              ^^^
-                        newline became "n "
+K3S_URL=https://192.168.4.54:6443
+K3S_TOKEN=<token from above>
 ```
 
-The agent logs show `not authorized` repeatedly. Fix by editing the env file directly:
+Then:
 
 ```bash
-sudo nano /etc/systemd/system/k3s-agent.service.env
-# Paste the full token on a single line, no wrapping
+curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="agent" sh -
 sudo systemctl daemon-reload && sudo systemctl restart k3s-agent
 ```
 
-## Gotcha - iptables-restore warning on Arch
+## Gotcha - Podman + k8s Cloudflare Tunnel Conflict
 
-On install, Arch shows:
+archbox ran agency services as Podman quadlets before k8s migration.
+The `agency-tunnel.service` Podman container survives k8s migration and competes
+with the k8s tunnel pod for the same Cloudflare tunnel credentials → connection
+cycling → 502s on ringcatch.io.
+
+**Fix:** stop the systemd user service on archbox:
+
+```bash
+systemctl --user stop agency-tunnel.service
+systemctl --user disable agency-tunnel.service
+```
+
+Check with: `ps aux | grep cloudflared` — should show exactly one process.
+
+## Gotcha - Tailscale IP change breaks flannel VXLAN
+
+If MikePC gets a new Tailscale IP (e.g. after OS reinstall), archbox's flannel
+FDB still points to the old IP → cross-node pod networking breaks → CoreDNS
+unreachable → services needing DNS at startup crashloop.
+
+Symptoms: `dig @10.43.0.10 discord.com` times out from archbox host.
+
+**Fix:**
+1. Update `/etc/systemd/system/k3s.service` on MikePC — change `--node-ip`, remove `--flannel-iface=tailscale0`
+2. Restart k3s: `sudo systemctl daemon-reload && sudo systemctl restart k3s`
+3. Update flannel annotation: `kubectl annotate node mikepc flannel.alpha.coreos.com/public-ip=192.168.4.54 --overwrite`
+4. archbox FDB updates automatically once server restarts
+
+## Gotcha - iptables/nftables warning on Arch (non-fatal)
 
 ```
-iptables-restore: COMMIT expected at line 11
+iptables-save v1.8.13 (nf_tables): Parsing nftables rule failed
 ```
 
-This is harmless - Arch uses nftables by default and the iptables compatibility
-layer throws a warning. k3s works correctly despite it.
+Appears in k3s-agent logs on archbox but is harmless. Flannel VXLAN and pod
+networking work correctly despite the warning.
+
+## Gotcha - Token Line Break
+
+When pasting the join token, long tokens can wrap and introduce a literal newline.
+Fix by editing the env file directly:
+
+```bash
+sudo nano /etc/systemd/system/k3s-agent.service.env
+sudo systemctl daemon-reload && sudo systemctl restart k3s-agent
+```
 
 ## Node Labels
 
@@ -75,74 +111,22 @@ kubectl label node mikepc always-on=true
 kubectl label node archbox always-on=true
 ```
 
-Use in pod specs to control placement:
-
-```yaml
-nodeSelector:
-  gpu: "true"        # lands on MikePC - RTX 5060 Ti 16GB
-  always-on: "true"  # lands on archbox - 24/7 uptime
-```
-
-## Verify Cross-Node Networking
-
-```bash
-# Deploy one pod per node
-kubectl apply -f - <<EOF
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: node-test
-spec:
-  selector:
-    matchLabels:
-      app: node-test
-  template:
-    metadata:
-      labels:
-        app: node-test
-    spec:
-      containers:
-      - name: nginx
-        image: nginx:alpine
-EOF
-
-# Get pod IPs
-kubectl get pods -o wide
-
-# Test cross-node communication (replace IPs with actual pod IPs)
-kubectl exec <pod-on-mikepc> -- wget -qO- http://<ip-of-pod-on-archbox>
-
-# Clean up
-kubectl delete daemonset node-test
-```
-
 ## kubeconfig
 
-kubeconfig is at `/etc/rancher/k3s/k3s.yaml` on MikePC.
-Copy to laptop for remote management:
+kubeconfig is at `/etc/rancher/k3s/k3s.yaml` on MikePC. Copy to another machine:
 
 ```bash
-scp mikepc:/etc/rancher/k3s/k3s.yaml ~/.kube/config
-# Replace 127.0.0.1 with MikePC Tailscale IP
-sed -i 's/127.0.0.1/100.97.45.57/g' ~/.kube/config
+scp mike@192.168.4.54:/etc/rancher/k3s/k3s.yaml ~/.kube/config
+sed -i 's/127.0.0.1/192.168.4.54/g' ~/.kube/config
 ```
 
 ## Useful Commands
 
 ```bash
-kubectl get nodes -o wide              # cluster status
-kubectl get pods -A -o wide            # all pods with node placement
-kubectl describe node mikepc           # resource usage, labels, events
-kubectl top nodes                      # CPU/memory (needs metrics-server)
-sudo systemctl status k3s              # control plane status (MikePC)
-sudo systemctl status k3s-agent        # worker status (archbox)
-sudo journalctl -u k3s-agent -f        # live agent logs
+kubectl get nodes -o wide
+kubectl get pods -A -o wide
+kubectl top nodes
+sudo systemctl status k3s              # control plane (MikePC)
+sudo systemctl status k3s-agent        # worker (archbox)
+sudo journalctl -u k3s-agent -f
 ```
-
-## Next Steps
-
-- Add MikeInspiron as third worker node
-- Deploy first real workload (Ollama GPU inference pod on MikePC)
-- Add NVIDIA GPU operator for RTX 5060 Ti passthrough
-- Migrate agency services from Podman quadlets to k3s manifests
-- AWS EKS - same manifests, cloud node pool added
