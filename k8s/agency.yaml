@@ -220,6 +220,7 @@ spec:
         app: agency-tunnel
     spec:
       hostPID: true
+      hostNetwork: true
       nodeSelector:
         kubernetes.io/hostname: archbox
       initContainers:
