@@ -25,7 +25,7 @@ alertmanager:
     - name: blackhole
     - name: discord
       discord_configs:
-      - webhook_url: 
+      - webhook_url: ${DISCORD_WEBHOOK_URL}
         title: '{{ if eq .Status "firing" }}🔴{{ else }}✅{{ end }} {{ .CommonLabels.alertname }}'
         message: |
           {{ range .Alerts }}
