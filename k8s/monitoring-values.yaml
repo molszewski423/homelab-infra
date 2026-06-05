@@ -1,0 +1,52 @@
+USER-SUPPLIED VALUES:
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 10m
+        memory: 32Mi
+  enabled: true
+grafana:
+  adminPassword: ringcatch-grafana
+  enabled: true
+  grafana.ini:
+    server:
+      root_url: '%(protocol)s://%(domain)s/grafana'
+  persistence:
+    enabled: true
+    size: 2Gi
+  service:
+    type: ClusterIP
+kubeControllerManager:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeStateMetrics:
+  enabled: true
+nodeExporter:
+  enabled: true
+prometheus:
+  prometheusSpec:
+    resources:
+      limits:
+        cpu: 500m
+        memory: 1Gi
+      requests:
+        cpu: 100m
+        memory: 512Mi
+    retention: 7d
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+          - ReadWriteOnce
+          resources:
+            requests:
+              storage: 5Gi
