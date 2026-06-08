@@ -35,10 +35,15 @@ kubectl rollout status deployment/<name> -n <namespace> --timeout=90s
 ## agency-tunnel (ringcatch.io)
 
 Public site via Cloudflare tunnel. Key config in agency.yaml:
-- `hostPID: true` + init container kills orphaned cloudflared by argv0 before registering
+- Routes to k3s service DNS — **NOT localhost**. Cloudflare ingress config:
+  - `ringcatch.io` / `www.ringcatch.io` → `http://agency-landing.agency.svc.cluster.local:80`
+  - `dashboard.ringcatch.io` → `http://agency-dashboard.agency.svc.cluster.local:8501`
+- No `hostNetwork`/`hostPID` — tunnel pod is in k3s overlay network so cluster DNS resolves
+- Init container purges stale Cloudflare connections via API before pod starts
 - `strategy: Recreate` — no rolling overlap during restarts
 - `--metrics 0.0.0.0:2000` + liveness probe httpGet /ready :2000 (30s delay, 60s period, 3 failures)
 - If 502/1033: `kubectl get pods -n agency -l app=agency-tunnel` then check logs
+- **All agency services run exclusively in k3s** — Podman quadlets on archbox are disabled
 
 ---
 

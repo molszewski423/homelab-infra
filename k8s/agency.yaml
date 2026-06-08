@@ -219,16 +219,12 @@ spec:
       labels:
         app: agency-tunnel
     spec:
-      hostPID: true
-      hostNetwork: true
       nodeSelector:
         kubernetes.io/hostname: archbox
       initContainers:
       - name: purge-connections
         image: docker.io/curlimages/curl:latest
         imagePullPolicy: IfNotPresent
-        securityContext:
-          runAsUser: 0
         envFrom:
         - secretRef:
             name: agency-env
@@ -237,14 +233,6 @@ spec:
         - -c
         args:
         - |
-          for f in /proc/[0-9]*/cmdline; do
-            argv0=$(cat "$f" 2>/dev/null | tr '\0' '\n' | head -1) || continue
-            [ "$argv0" = "cloudflared" ] || continue
-            pid=${f%/cmdline}; pid=${pid#/proc/}
-            echo "killing ghost cloudflared pid=$pid"
-            kill -9 "$pid" 2>/dev/null || true
-          done
-          sleep 3
           curl -sf --max-time 10 -X DELETE \
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/c7f77378cf53b5436dacbc6a8e673cc4/cfd_tunnel/2ef09425-ed87-4c07-a0e4-ecca2041dcdf/connections" || true
