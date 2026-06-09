@@ -1461,3 +1461,45 @@ subjects:
 - kind: ServiceAccount
   name: tunnel-restarter
   namespace: agency
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: tunnel-watchdog
+  namespace: agency
+spec:
+  schedule: "*/5 * * * *"
+  timeZone: "America/New_York"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 60
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 55
+      template:
+        spec:
+          serviceAccountName: tunnel-restarter
+          restartPolicy: Never
+          containers:
+          - name: watchdog
+            image: docker.io/curlimages/curl:latest
+            command:
+            - /bin/sh
+            - -c
+            - |
+              STATUS=$(curl -s --max-time 10 -o /dev/null -w "%{http_code}" https://ringcatch.io)
+              if [ "$STATUS" = "200" ]; then
+                echo "OK ($STATUS)"
+                exit 0
+              fi
+              echo "ringcatch.io returned $STATUS — restarting tunnel"
+              TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+              CA=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+              PATCH="{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"watchdog/restartedAt\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}}}}}"
+              curl -sf -X PATCH \
+                --cacert "$CA" \
+                -H "Authorization: Bearer $TOKEN" \
+                -H "Content-Type: application/strategic-merge-patch+json" \
+                "https://kubernetes.default.svc/apis/apps/v1/namespaces/agency/deployments/agency-tunnel" \
+                -d "$PATCH" && echo "Restart triggered" || echo "Restart failed"
