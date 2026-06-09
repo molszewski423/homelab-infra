@@ -1,0 +1,160 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agency-tunnel
+  namespace: agency
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: agency-tunnel
+  template:
+    metadata:
+      labels:
+        app: agency-tunnel
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: archbox
+      initContainers:
+      - name: purge-connections
+        image: docker.io/curlimages/curl:7.88.1
+        imagePullPolicy: IfNotPresent
+        envFrom:
+        - secretRef:
+            name: agency-env
+        command:
+        - /bin/sh
+        - -c
+        args:
+        - |
+          curl -sf --max-time 10 -X DELETE \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/c7f77378cf53b5436dacbc6a8e673cc4/cfd_tunnel/2ef09425-ed87-4c07-a0e4-ecca2041dcdf/connections" || true
+          sleep 3
+      containers:
+      - name: tunnel
+        image: docker.io/cloudflare/cloudflared:2026.5.2
+        imagePullPolicy: IfNotPresent
+        args:
+        - tunnel
+        - --no-autoupdate
+        - --loglevel
+        - info
+        - --metrics
+        - 0.0.0.0:2000
+        - run
+        env:
+        - name: TUNNEL_TRANSPORT_PROTOCOL
+          value: quic
+        envFrom:
+        - secretRef:
+            name: agency-env
+        livenessProbe:
+          httpGet:
+            path: /ready
+            port: 2000
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          failureThreshold: 6
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 2000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: tunnel-nightly-restart
+  namespace: agency
+spec:
+  schedule: "5 3 * * *"
+  timeZone: "America/New_York"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: tunnel-restarter
+          restartPolicy: OnFailure
+          containers:
+          - name: restart
+            image: docker.io/bitnami/kubectl:latest
+            command: ["kubectl", "rollout", "restart", "deployment/agency-tunnel", "-n", "agency"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tunnel-restarter
+  namespace: agency
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tunnel-restarter
+  namespace: agency
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tunnel-restarter
+  namespace: agency
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: tunnel-restarter
+subjects:
+- kind: ServiceAccount
+  name: tunnel-restarter
+  namespace: agency
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: tunnel-watchdog
+  namespace: agency
+spec:
+  schedule: "*/5 * * * *"
+  timeZone: "America/New_York"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 60
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 55
+      template:
+        spec:
+          serviceAccountName: tunnel-restarter
+          restartPolicy: Never
+          containers:
+          - name: watchdog
+            image: docker.io/curlimages/curl:latest
+            command:
+            - /bin/sh
+            - -c
+            - |
+              STATUS=$(curl -s --max-time 10 -o /dev/null -w "%{http_code}" https://ringcatch.io)
+              if [ "$STATUS" = "200" ]; then
+                echo "OK ($STATUS)"
+                exit 0
+              fi
+              echo "ringcatch.io returned $STATUS — restarting tunnel"
+              TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+              CA=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+              PATCH="{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"watchdog/restartedAt\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}}}}}"
+              curl -sf -X PATCH \
+                --cacert "$CA" \
+                -H "Authorization: Bearer $TOKEN" \
+                -H "Content-Type: application/strategic-merge-patch+json" \
+                "https://kubernetes.default.svc/apis/apps/v1/namespaces/agency/deployments/agency-tunnel" \
+                -d "$PATCH" && echo "Restart triggered" || echo "Restart failed"
