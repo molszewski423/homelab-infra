@@ -202,16 +202,6 @@ spec:
   - port: 5432
     targetPort: 5432
 ---
-          failureThreshold: 3
-          timeoutSeconds: 5
-        resources:
-          requests:
-            memory: 64Mi
-            cpu: 50m
-          limits:
-            memory: 256Mi
-            cpu: 500m
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
