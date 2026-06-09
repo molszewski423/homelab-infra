@@ -248,11 +248,10 @@ spec:
         - info
         - --metrics
         - 0.0.0.0:2000
-        - --protocol
-        - http2
-        - --edge-ip-version
-        - '4'
         - run
+        env:
+        - name: TUNNEL_TRANSPORT_PROTOCOL
+          value: quic
         envFrom:
         - secretRef:
             name: agency-env
