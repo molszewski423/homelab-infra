@@ -519,6 +519,36 @@ spec:
   - port: 8079
     targetPort: 8079
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agency-support
+  namespace: agency
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agency-support-restarter
+  namespace: agency
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agency-support-restarter
+  namespace: agency
+subjects:
+- kind: ServiceAccount
+  name: agency-support
+  namespace: agency
+roleRef:
+  kind: Role
+  name: agency-support-restarter
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -534,6 +564,7 @@ spec:
       labels:
         app: agency-support
     spec:
+      serviceAccountName: agency-support
       nodeSelector:
         kubernetes.io/hostname: archbox
       containers:
@@ -543,9 +574,6 @@ spec:
         envFrom:
         - secretRef:
             name: agency-env
-        env:
-        - name: PODMAN_SOCKET
-          value: /dev/null
         volumeMounts:
         - name: data
           mountPath: /data
