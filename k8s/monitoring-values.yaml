@@ -1,5 +1,7 @@
 alertmanager:
   alertmanagerSpec:
+    nodeSelector:
+      kubernetes.io/hostname: archbox
     resources:
       limits:
         cpu: 100m
@@ -25,7 +27,7 @@ alertmanager:
     - name: blackhole
     - name: discord
       discord_configs:
-      - webhook_url: ${DISCORD_WEBHOOK_URL}
+      - webhook_url: https://discordapp.com/api/webhooks/1512606925022560337/iA738L0F0a9ZxD4IkM05SsgZ
         title: '{{ if eq .Status "firing" }}🔴{{ else }}✅{{ end }} {{ .CommonLabels.alertname }}'
         message: |
           {{ range .Alerts }}
@@ -45,6 +47,8 @@ grafana:
   grafana.ini:
     server:
       root_url: '%(protocol)s://%(domain)s/grafana'
+  nodeSelector:
+    kubernetes.io/hostname: archbox
   persistence:
     enabled: true
     size: 2Gi
@@ -64,6 +68,8 @@ nodeExporter:
   enabled: true
 prometheus:
   prometheusSpec:
+    nodeSelector:
+      kubernetes.io/hostname: archbox
     resources:
       limits:
         cpu: 500m
@@ -72,6 +78,7 @@ prometheus:
         cpu: 100m
         memory: 512Mi
     retention: 7d
+    retentionSize: 4GB
     storageSpec:
       volumeClaimTemplate:
         spec:
