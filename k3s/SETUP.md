@@ -1,20 +1,25 @@
-# k3s Cluster - MikePC + archbox + MikeInspiron
+# k3s Cluster - mikepc + archbox + centosbook
 
-**Updated:** 2026-06-01
-**k3s version:** v1.35.5+k3s1
+**Updated:** 2026-07-25
+**k3s version:** v1.36.2+k3s1 (auto-tracked via system-upgrade-controller, stable channel)
 **Status:** Running - 3 nodes, LAN networking (flannel VXLAN over LAN)
 
 > **2026-06-01:** Migrated from Tailscale-based flannel to LAN-based flannel.
 > MikePC got a new Tailscale IP after Debian 13 migration, breaking cross-node VXLAN.
 > Cluster now routes flannel traffic directly over the home LAN.
 
+> **2026-07-25:** `MikeInspiron` (Debian 13, listed as "pending" worker) was reimaged
+> to CentOS Stream 10 and rejoined as node `centosbook`. k3s upgraded to v1.36.2+k3s1
+> across all nodes via `system-upgrade-controller` Plans (`k3s-server`/`k3s-agent`,
+> stable channel) — check status with `kubectl get plans -n system-upgrade`.
+
 ## Cluster
 
 | Node | Role | LAN IP | OS | Kernel |
 |---|---|---|---|---|
-| mikepc | control-plane | 192.168.4.54 | Debian 13 | 6.12.90 |
+| mikepc | control-plane | 192.168.4.54 | Debian 13 | 6.12.95+deb13 |
 | archbox | worker | 192.168.4.45 | Arch Linux | 7.0.10-arch1 |
-| mikeinspiron | worker | 192.168.4.29 | Debian 13 | - |
+| centosbook | worker | 192.168.4.33 | CentOS Stream 10 | 6.12.0-250.el10 |
 
 ## Install - Control Plane (MikePC, Debian 13)
 
@@ -53,6 +58,19 @@ Then:
 curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="agent" sh -
 sudo systemctl daemon-reload && sudo systemctl restart k3s-agent
 ```
+
+## Install - Worker Node (centosbook, CentOS Stream 10)
+
+Same join steps as above (`K3S_URL`/`K3S_TOKEN` in `/etc/systemd/system/k3s-agent.service.env`,
+then `curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="agent" sh -`). CentOS Stream ships
+`firewalld` instead of `nftables`/`iptables` — if pod-to-pod traffic from other nodes doesn't
+reach centosbook, check `firewall-cmd --state` and either stop it or open the flannel VXLAN
+port (UDP 8472) and kubelet port (10250).
+
+**Lid-close suspend:** confirmed handled via `/etc/systemd/logind.conf.d/10-no-lid-suspend.conf`
+(`HandleLidSwitch=ignore` for battery/AC/docked) — already present after the reimage, no
+action needed. `systemctl is-enabled` on the sleep/suspend/hibernate targets themselves
+reports `static` (expected; logind's `HandleLidSwitch` is the actual gate, not unit masking).
 
 ## Gotcha - Podman + k8s Cloudflare Tunnel Conflict
 
@@ -109,6 +127,7 @@ sudo systemctl daemon-reload && sudo systemctl restart k3s-agent
 kubectl label node mikepc gpu=true
 kubectl label node mikepc always-on=true
 kubectl label node archbox always-on=true
+kubectl label node centosbook always-on=true
 ```
 
 ## kubeconfig

@@ -617,7 +617,7 @@ spec:
         app: agency-landing
     spec:
       nodeSelector:
-        kubernetes.io/hostname: archbox
+        kubernetes.io/hostname: centosbook
       containers:
       - name: landing
         image: localhost/agency-landing:latest

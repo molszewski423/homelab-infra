@@ -3,8 +3,10 @@
 k3s manifests and IaC for the 3-node home cluster.
 
 **Control plane:** mikepc (192.168.4.54) — kubectl must be run here  
-**Workers:** archbox (agency namespace) · mikeinspiron (traefik only, lid-closed)  
-**Latest commit:** c729ac5 · remotes: origin=gitlab.com, gitea=git.lan
+**Workers:** archbox (agency namespace, holds the shared agency-data-pvc — see k3s/README.md) ·
+centosbook (CentOS Stream 10, reimaged from the old mikeinspiron/Debian box 2026-07-25;
+lid-closed, `always-on=true`, HandleLidSwitch=ignore confirmed)  
+**Remotes:** origin=gitlab.com, gitea=git.lan
 
 ---
 
