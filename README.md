@@ -2,7 +2,7 @@
 
 Infrastructure as Code for a three-node k3s homelab running a local clinical AI platform and a 24-service AI agency stack.
 
-**k3s v1.35.5** - single control plane on mikepc, two workers (archbox + mikeinspiron), all on LAN 192.168.4.x. All manifests in `k8s/`. kubectl runs from mikepc only.
+**k3s v1.36.2** - single control plane on mikepc, two workers (archbox + centosbook), all on LAN 192.168.4.x. All manifests in `k8s/`. kubectl runs from mikepc only.
 
 ---
 
@@ -19,9 +19,14 @@ Infrastructure as Code for a three-node k3s homelab running a local clinical AI 
 | Node | Role | LAN IP | Tailscale IP | Hardware | OS |
 |---|---|---|---|---|---|
 | **mikepc** | Control plane | 192.168.4.54 | Tailscale | RTX 5060 Ti 16 GB, 32 GB RAM | Debian 13 |
-| **archbox** | Worker | 192.168.4.46 | Tailscale | Intel i3-4130T, 24/7 | Arch Linux |
-| **mikeinspiron** | Worker | 192.168.4.33 | - (LAN only) | Dell Inspiron 3501 · i5-1035G1 · 8 GB RAM | Debian 13 |
+| **archbox** | Worker | 192.168.4.45 | Tailscale | Intel i3-4130T, 24/7 | Arch Linux |
+| **centosbook** | Worker | 192.168.4.33 | Tailscale (DNS disabled — see gotcha below) | Dell Inspiron 3501 · i5-1035G1 · 8 GB RAM | CentOS Stream 10 |
 | **ThinkPad T14 Gen 2** | Daily driver (not a cluster node) | - | Tailscale | i7-1185G7 · 32 GB RAM · 512 GB SSD · WiFi 6 | Debian 13 |
+
+`centosbook` is the same physical Inspiron laptop that previously ran Debian 13 as
+`mikeinspiron` — reimaged to CentOS Stream 10 and rejoined 2026-07-25. Deliberately a
+different distro than the other two nodes; see `k3s/README.md` for why. Full setup/gotcha
+detail (firewalld, Tailscale DNS override) lives in `k3s/SETUP.md`, not here.
 
 kubectl must be run from **mikepc** (control plane). Worker nodes do not have kubectl configured.
 
@@ -38,7 +43,7 @@ curl -sfL https://get.k3s.io | sh -
 # Get node token for workers
 sudo cat /var/lib/rancher/k3s/server/node-token
 
-# Workers (archbox, mikeinspiron) - replace TOKEN
+# Workers (archbox, centosbook) - replace TOKEN
 curl -sfL https://get.k3s.io | K3S_URL=https://192.168.4.54:6443 K3S_TOKEN=<token> sh -
 ```
 
@@ -119,9 +124,9 @@ resources:
 
 Ollama models loaded: `gemma4:26b` · `gemma4:e4b` · `qwen3:30b` · `qwen2.5:7b` · `nomic-embed-text`
 
-### `agency` - RingCatch AI Agency (all pods pinned to archbox)
+### `agency` - RingCatch AI Agency (23 of 24 pods pinned to archbox, `agency-landing` on centosbook)
 
-24 services. Custom images are `localhost/agency-*:latest` - built with Podman on archbox and imported into k3s containerd directly (not in any registry).
+24 services. Custom images are `localhost/agency-*:latest` - built with Podman on archbox and imported into k3s containerd directly (not in any registry) - **including into each node's own containerd separately** when a pod is scheduled to a node other than archbox, since there's no shared image registry. `agency-landing` moved to centosbook 2026-07-25 as the only service with no dependency on the shared, archbox-pinned `agency-data-pvc`; everything else stays on archbox until that storage is migrated off local hostPath.
 
 See [ringcatch-agency](https://gitlab.com/molszewski423/ringcatch-agency) for the full service list, LLM routing chain, and rebuild workflow.
 
@@ -145,7 +150,17 @@ k8s/
 ├── argus.yaml             # Discord bot (same image as pv-workbench)
 ├── ingress.yaml           # Traefik IngressRoutes: pv.lan, ams.lan, git.lan
 ├── gitea.yaml             # Gitea + PVC
-└── agency.yaml            # All 24 agency Deployments + Services + PVCs
+├── agency.yaml            # All 24 agency Deployments + Services + PVCs
+├── tunnel.yaml            # agency-tunnel Deployment + restart/watchdog CronJobs
+└── monitoring-values.yaml # kube-prometheus-stack Helm values (archbox-pinned)
+
+network/
+├── adguard/AdGuardHome.yaml   # AdGuard Home config reference (runs natively on archbox, not in k3s)
+├── crowdsec/                  # CrowdSec agent + firewall-bouncer config reference (also native on archbox)
+└── nftables/nftables.conf     # inet homelab table, applied on all three nodes
+
+ansible/
+└── archbox.yml, inventory.ini, roles/   # archbox provisioning
 
 terraform/
 ├── cloudflare/            # Applied — Cloudflare DNS + tunnel ingress as code
@@ -160,6 +175,11 @@ terraform/
         ├── ec2/           # Instance, key pair, EIP, EBS, user_data bootstrap
         └── networking/    # Security group: SSH home-only, Tailscale UDP, outbound all
 ```
+
+Note: `network/adguard/` and `network/crowdsec/` are config references, not k3s manifests —
+AdGuard Home and CrowdSec both run as native systemd services on archbox, not as pods.
+`quadlets/` also still exists in this repo (pre-k3s Podman unit files) — kept as historical
+reference only; Podman itself has not run on archbox since 2026-06-14.
 
 ---
 
@@ -254,26 +274,16 @@ Network-level DNS filtering on archbox, serving all LAN clients.
 
 All DNS queries from LAN machines resolve through AdGuard Home. Upstream queries use DNS-over-HTTPS and DNS-over-TLS — no plaintext DNS leaves the network.
 
-### Tailscale + nftables
-
-Inter-node communication (archbox ↔ mikepc ↔ mikeinspiron) uses Tailscale mesh. The nftables ruleset enforces this:
-
-```
-chain ts-input {
-    # Accept all Tailscale interface traffic
-    iifname "tailscale0*"  accept
-    # Allow Tailscale UDP handshake
-    udp dport 41641        accept
-    # Drop non-Tailscale traffic from CGNAT range
-    iifname != "tailscale0*" ip saddr 100.64.0.0/10  drop
-}
-```
-
-k3s Flannel CNI and kube-proxy chains are managed automatically by k3s. CrowdSec firewall bouncer injects ban rules into the same nftables ruleset.
-
 ### nftables Firewall
 
-All three nodes run a default-deny INPUT firewall via a custom `inet homelab` nftables table (priority -10, runs before k3s/Flannel/CrowdSec chains). Applied at boot via `homelab-firewall.service`.
+Inter-node k3s traffic (flannel VXLAN, kube-proxy) runs over the **plain LAN**
+(192.168.4.x), not Tailscale — migrated off Tailscale-based flannel 2026-06-01 after it
+broke on a MikePC IP change (see `k3s/SETUP.md`). Tailscale is kept on all three nodes for
+remote administrative access only (SSH from outside the LAN, `tailscale0` accepted below).
+
+All three nodes run a default-deny INPUT firewall via a single custom `inet homelab`
+nftables table (priority -10, runs before k3s/Flannel/CrowdSec chains). This is the actual,
+live ruleset — verified directly against `nft list table inet homelab` on 2026-07-25:
 
 ```
 Accepted inbound:
@@ -289,8 +299,15 @@ Accepted inbound:
 Everything else: DROP
 ```
 
+k3s Flannel CNI and kube-proxy chains are managed automatically by k3s, alongside this
+table. CrowdSec's firewall bouncer injects ban rules into the same ruleset.
+
 Config: `/etc/nftables-homelab.conf` on each node
 Service: `homelab-firewall.service` (enabled, persists across reboots)
+
+centosbook additionally runs `firewalld` (CentOS default, not present on the other two
+nodes) — see the firewalld gotcha in `k3s/SETUP.md` for why that needed its own fix on top
+of this table.
 
 ### kubeconfig
 
@@ -306,8 +323,15 @@ Service: `homelab-firewall.service` (enabled, persists across reboots)
 | 2026-05-31 | Ollama migrated from systemd service to k3s GPU pod |
 | 2026-05-31 | pv-workbench, ams-intelligence, argus-bot deployed to k3s |
 | 2026-05-31 | RingCatch agency migrated from Podman quadlets to k3s (24 services) |
-| 2026-05-31 | mikeinspiron joined as 3rd worker node |
 | 2026-05-31 | kubeconfig locked down: k3s.yaml chmod 600, user copy at ~/.kube/config |
+| 2026-06-01 | Migrated flannel from Tailscale-based to LAN-based (Tailscale IP churn broke cross-node VXLAN) |
+| 2026-06-14 | Podman fully retired on archbox — all agency services exclusively in k3s from this point |
+| 2026-07-25 | mikeinspiron (Debian 13, repeatedly attempted/listed as "pending" but never durably joined) reimaged to CentOS Stream 10, rejoined as node `centosbook` — first time this node actually appears in `kubectl get nodes` |
+| 2026-07-25 | k3s upgraded to v1.36.2+k3s1 across all nodes via `system-upgrade-controller` |
+| 2026-07-25 | `agency-landing` moved to centosbook — first agency-\* service off archbox |
+| 2026-07-25 | Outage: Tailscale overwrote centosbook's resolv.conf, broke CoreDNS cluster-wide once it landed there; firewalld then blocked forwarded pod traffic even after DNS was fixed. Both fixed — see `k3s/SETUP.md` gotchas. Took ringcatch.io down for ~15 min. |
+| 2026-07-25 | Gitea push-mirrors to GitLab fixed (homelab-infra, k3s-homelab) and added (molszewski423 profile repo) — all had dead/missing credentials despite docs claiming auto-sync was working |
+| 2026-07-25 | Removed duplicate/unreferenced `terraform/modules/` (identical copy of `terraform/aws/modules/`, which is the one actually used) |
 
 ---
 
