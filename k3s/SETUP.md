@@ -62,15 +62,54 @@ sudo systemctl daemon-reload && sudo systemctl restart k3s-agent
 ## Install - Worker Node (centosbook, CentOS Stream 10)
 
 Same join steps as above (`K3S_URL`/`K3S_TOKEN` in `/etc/systemd/system/k3s-agent.service.env`,
-then `curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="agent" sh -`). CentOS Stream ships
-`firewalld` instead of `nftables`/`iptables` — if pod-to-pod traffic from other nodes doesn't
-reach centosbook, check `firewall-cmd --state` and either stop it or open the flannel VXLAN
-port (UDP 8472) and kubelet port (10250).
+then `curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="agent" sh -`).
 
 **Lid-close suspend:** confirmed handled via `/etc/systemd/logind.conf.d/10-no-lid-suspend.conf`
 (`HandleLidSwitch=ignore` for battery/AC/docked) — already present after the reimage, no
 action needed. `systemctl is-enabled` on the sleep/suspend/hibernate targets themselves
 reports `static` (expected; logind's `HandleLidSwitch` is the actual gate, not unit masking).
+
+## Gotcha - Tailscale overwrites resolv.conf on new nodes, breaks any pod scheduled there
+
+Tailscale on Linux rewrites `/etc/resolv.conf` to point at its own MagicDNS resolver
+(`100.100.100.100` / `fd7a:...::53`) by default. If a DNS-sensitive singleton pod with no
+nodeSelector (CoreDNS, in this case) gets scheduled onto a node running Tailscale, it inherits
+that resolv.conf via the `forward` plugin — and if MagicDNS isn't reachable from the pod
+netns, **every DNS lookup cluster-wide fails**, including the Cloudflare tunnel's own lookups
+(precheck fails, `agency-tunnel` crashloops, ringcatch.io 502s).
+
+Symptoms in `kubectl logs -n kube-system -l k8s-app=kube-dns`:
+```
+[ERROR] plugin/errors: ... dial udp [fd7a:...::53]:53: connect: network is unreachable
+```
+
+**Fix (per node running Tailscale that might host CoreDNS):**
+```bash
+sudo tailscale set --accept-dns=false
+kubectl rollout restart deployment/coredns -n kube-system
+```
+Hit this on centosbook 2026-07-25, first time a Tailscale-enabled node joined without a
+nodeSelector excluding it from `kube-system` singletons.
+
+## Gotcha - firewalld on CentOS drops forwarded pod/service traffic by default
+
+Unlike archbox (Arch, no firewalld) and mikepc (Debian, no firewalld), CentOS Stream ships
+`firewalld` active out of the box. Its default `public` zone only covers the physical NIC —
+the `flannel.1`/`cni0` overlay interfaces aren't zone members, so traffic *forwarded* through
+the node from other nodes gets silently dropped even though `firewall-cmd --list-all` shows
+the flannel VXLAN port (8472/udp) and kubelet (10250/tcp) already open. This is what turned
+the CoreDNS-on-centosbook incident above into a full outage — archbox couldn't reach the
+CoreDNS pod's IP on centosbook's pod subnet at all ("no route to host"), despite the port
+being open and ICMP to the node itself working fine.
+
+**Fix:** trust the k3s pod and service CIDRs as sources, instead of touching the per-port
+rules or the SSH/cockpit protections on the physical interface:
+```bash
+sudo firewall-cmd --permanent --zone=trusted --add-source=10.42.0.0/16   # pod CIDR
+sudo firewall-cmd --permanent --zone=trusted --add-source=10.43.0.0/16   # service CIDR
+sudo firewall-cmd --reload
+```
+Do this on any future CentOS/RHEL-family node before relying on it for cluster-critical pods.
 
 ## Gotcha - Podman + k8s Cloudflare Tunnel Conflict
 
