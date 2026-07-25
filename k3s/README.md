@@ -16,6 +16,20 @@ Migrated off Tailscale-based flannel 2026-06-01 — see SETUP.md gotcha.
 Lid-closed 24/7 like its predecessor — `/etc/systemd/logind.conf.d/10-no-lid-suspend.conf`
 sets `HandleLidSwitch=ignore` (battery/AC/docked), confirmed present after the reimage.
 
+### Why CentOS Stream, deliberately mixed OS
+
+The cluster is intentionally multi-distro (Debian on mikepc, Arch on archbox, CentOS
+Stream on centosbook) rather than three identical images:
+
+- Forces workload manifests and setup docs to stay distro-agnostic (systemd units,
+  package names, firewall tooling all differ — catches assumptions the other two
+  nodes' similarity would hide)
+- centosbook doubles as a standing RHEL-family environment for tracking Fedora/CentOS
+  Stream (upstream of RHEL) changes, testing/reporting bugs, and general RHEL
+  ecosystem familiarity — separate from its role as cluster capacity
+- Concretely surfaced a real difference on day one: CentOS ships `firewalld` instead
+  of `nftables`/`iptables` — see the worker install section in SETUP.md
+
 ## Node Labels
 
 - `gpu=true` - mikepc (RTX 5060 Ti 16GB) - AI inference workloads
