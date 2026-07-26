@@ -2,7 +2,7 @@
 
 Infrastructure as Code for a three-node k3s homelab running a local clinical AI platform and a 24-service AI agency stack.
 
-**k3s v1.36.2** - single control plane on mikepc, two workers (archbox + centosbook), all on LAN 192.168.4.x. All manifests in `k8s/`. kubectl runs from mikepc only.
+**k3s v1.36.2** - single control plane on mikepc, two workers (debianbox + centosbook), all on LAN 192.168.4.x. All manifests in `k8s/`. kubectl runs from mikepc only.
 
 ---
 
@@ -18,15 +18,23 @@ Infrastructure as Code for a three-node k3s homelab running a local clinical AI 
 
 | Node | Role | LAN IP | Tailscale IP | Hardware | OS |
 |---|---|---|---|---|---|
-| **mikepc** | Control plane | 192.168.4.54 | Tailscale | RTX 5060 Ti 16 GB, 32 GB RAM | Debian 13 |
-| **archbox** | Worker | 192.168.4.45 | Tailscale | Intel i3-4130T, 24/7 | Arch Linux |
+| **mikepc** | Control plane | 192.168.4.54 | 100.97.45.57 | RTX 5060 Ti 16 GB, 32 GB RAM | Debian 13 |
+| **debianbox** | Worker | 192.168.4.45 | 100.80.218.77 | Intel i3-4130T, 24/7 | Debian 13 |
 | **centosbook** | Worker | 192.168.4.33 | Tailscale (DNS disabled — see gotcha below) | Dell Inspiron 3501 · i5-1035G1 · 8 GB RAM | CentOS Stream 10 |
 | **ThinkPad T14 Gen 2** | Daily driver (not a cluster node) | - | Tailscale | i7-1185G7 · 32 GB RAM · 512 GB SSD · WiFi 6 | Debian 13 |
 
+`debianbox` was `archbox` (Arch Linux) on the same hardware until wiped and reinstalled as
+Debian 13 on 2026-07-26 after its last Arch update broke reboot reliability — same LAN IP,
+new Tailscale IP (old 100.96.122.27 is retired, delete that device from the Tailscale
+admin console if still listed). Real k3s node rename: the old `archbox` node object was
+deleted and a fresh `debianbox` node joined in its place, not renamed in-place.
+
 `centosbook` is the same physical Inspiron laptop that previously ran Debian 13 as
-`mikeinspiron` — reimaged to CentOS Stream 10 and rejoined 2026-07-25. Deliberately a
-different distro than the other two nodes; see `k3s/README.md` for why. Full setup/gotcha
-detail (firewalld, Tailscale DNS override) lives in `k3s/SETUP.md`, not here.
+`mikeinspiron` — reimaged to CentOS Stream 10 and rejoined 2026-07-25. The cluster was
+originally deliberately multi-distro (Debian/Arch/CentOS) to catch distro assumptions in
+manifests and docs; since the 2026-07-26 rebuild it's Debian/Debian/CentOS instead, so
+that property is weaker than designed — see `k3s/README.md` for the full note. Full
+setup/gotcha detail (firewalld, Tailscale DNS override) lives in `k3s/SETUP.md`, not here.
 
 kubectl must be run from **mikepc** (control plane). Worker nodes do not have kubectl configured.
 
@@ -43,7 +51,7 @@ curl -sfL https://get.k3s.io | sh -
 # Get node token for workers
 sudo cat /var/lib/rancher/k3s/server/node-token
 
-# Workers (archbox, centosbook) - replace TOKEN
+# Workers (debianbox, centosbook) - replace TOKEN
 curl -sfL https://get.k3s.io | K3S_URL=https://192.168.4.54:6443 K3S_TOKEN=<token> sh -
 ```
 
@@ -124,9 +132,17 @@ resources:
 
 Ollama models loaded: `gemma4:26b` · `gemma4:e4b` · `qwen3:30b` · `qwen2.5:7b` · `nomic-embed-text`
 
-### `agency` - RingCatch AI Agency (23 of 24 pods pinned to archbox, `agency-landing` on centosbook)
+### `agency` - RingCatch AI Agency (most pods pinned to debianbox; `agency-landing`/`agency-tunnel` on centosbook)
 
-24 services. Custom images are `localhost/agency-*:latest` - built with Podman on archbox and imported into k3s containerd directly (not in any registry) - **including into each node's own containerd separately** when a pod is scheduled to a node other than archbox, since there's no shared image registry. `agency-landing` moved to centosbook 2026-07-25 as the only service with no dependency on the shared, archbox-pinned `agency-data-pvc`; everything else stays on archbox until that storage is migrated off local hostPath.
+24 services. Custom images are `localhost/agency-*:latest` - built with Podman on debianbox and imported into k3s containerd directly (not in any registry) - **including into each node's own containerd separately** when a pod is scheduled to a node other than debianbox, since there's no shared image registry. `agency-landing` and `agency-tunnel` run on centosbook as the only services with no dependency on the shared, debianbox-pinned `agency-data-pvc` — this means the public site and tunnel stay up independently of debianbox's health. Everything else stays on debianbox until that storage is migrated off local hostPath.
+
+All 17 custom `agency-*` images had to be rebuilt from source on debianbox during the
+2026-07-26 archbox→debianbox rebuild, since they only ever existed in the old node's local
+containerd. Two build gotchas hit during that rebuild, both now fixed: rootless podman's
+`pasta` network backend needs `pasta_options = ["-4"]` in `~/.config/containers/containers.conf`
+(IPv6 hangs mid-connection to at least one external registry on this LAN), and any
+Containerfile installing `tzdata` via apt needs `ENV DEBIAN_FRONTEND=noninteractive` or the
+build hangs forever on an interactive prompt with no TTY to answer it.
 
 See [ringcatch-agency](https://gitlab.com/molszewski423/ringcatch-agency) for the full service list, LLM routing chain, and rebuild workflow.
 
@@ -152,15 +168,15 @@ k8s/
 ├── gitea.yaml             # Gitea + PVC
 ├── agency.yaml            # All 24 agency Deployments + Services + PVCs
 ├── tunnel.yaml            # agency-tunnel Deployment + restart/watchdog CronJobs
-└── monitoring-values.yaml # kube-prometheus-stack Helm values (archbox-pinned)
+└── monitoring-values.yaml # kube-prometheus-stack Helm values (debianbox-pinned)
 
 network/
-├── adguard/AdGuardHome.yaml   # AdGuard Home config reference (runs natively on archbox, not in k3s)
-├── crowdsec/                  # CrowdSec agent + firewall-bouncer config reference (also native on archbox)
-└── nftables/nftables.conf     # inet homelab table, applied on all three nodes
+├── adguard/AdGuardHome.yaml   # AdGuard Home config reference (runs natively on debianbox, not in k3s)
+├── crowdsec/                  # CrowdSec agent + firewall-bouncer config reference (also native on debianbox)
+└── nftables/nftables.conf     # Debian's unused default template — NOT the real config; see Network Security section for why
 
 ansible/
-└── archbox.yml, inventory.ini, roles/   # archbox provisioning
+└── archbox.yml, inventory.ini, roles/   # STALE — Arch/pacman-only, not ported to debianbox (Debian/apt); see ansible/README.md
 
 terraform/
 ├── cloudflare/            # Applied — Cloudflare DNS + tunnel ingress as code
@@ -177,9 +193,10 @@ terraform/
 ```
 
 Note: `network/adguard/` and `network/crowdsec/` are config references, not k3s manifests —
-AdGuard Home and CrowdSec both run as native systemd services on archbox, not as pods.
+AdGuard Home and CrowdSec both run as native systemd services on debianbox, not as pods.
 `quadlets/` also still exists in this repo (pre-k3s Podman unit files) — kept as historical
-reference only; Podman itself has not run on archbox since 2026-06-14.
+reference only; Podman itself has not run as a service on debianbox (or archbox before it)
+since 2026-06-14; `podman build` is still used for one-off local image builds.
 
 ---
 
@@ -195,8 +212,8 @@ kubectl apply -f ~/homelab-infra/k8s/
 kubectl rollout restart deployment/pv-workbench -n ai
 kubectl rollout restart deployment/ams-intelligence -n ai
 
-# Agency services - rebuild + reimport on archbox first, then restart from mikepc
-# On archbox:
+# Agency services - rebuild + reimport on debianbox first, then restart from mikepc
+# On debianbox:
 cd ~/agency/<service>
 podman build -t localhost/agency-<service>:latest .
 podman save localhost/agency-<service>:latest | sudo k3s ctr -n k8s.io images import -
@@ -223,7 +240,7 @@ kubectl create secret docker-registry gitlab-registry -n ai \
   --docker-username=<user> \
   --docker-password=<pat-read-registry>
 
-# Agency env (sourced from ~/agency/.env on archbox - never commit)
+# Agency env (sourced from ~/agency/.env on debianbox - never commit)
 kubectl create secret generic agency-env -n agency \
   --from-env-file=/home/mike/agency/.env
 ```
@@ -233,21 +250,26 @@ kubectl create secret generic agency-env -n agency \
 
 ## Network Security
 
-The homelab runs defense-in-depth across four layers: no open inbound ports, DNS filtering, IDS/IPS with automatic firewall enforcement, and Tailscale mesh for inter-node traffic. All layers run on archbox as the 24/7 perimeter node.
+The homelab runs defense-in-depth across four layers: no open inbound ports, DNS filtering, IDS/IPS with automatic firewall enforcement, and Tailscale mesh for inter-node traffic. All layers run on debianbox as the 24/7 perimeter node.
 
 ### No Open Inbound Ports
 
 All public traffic enters via **Cloudflare Tunnel** — an outbound-only connection from `agency-tunnel` to Cloudflare's edge. There are no open inbound ports on any machine. The attack surface for public-facing services is zero.
 
 ```
-Internet → Cloudflare Edge → Cloudflare Tunnel (outbound from archbox) → k3s services
+Internet → Cloudflare Edge → Cloudflare Tunnel (outbound from centosbook) → k3s services
 ```
 
 SSH is accessible only from LAN (192.168.4.x) and Tailscale mesh — never exposed publicly.
 
 ### CrowdSec (IDS/IPS)
 
-CrowdSec agent + firewall bouncer running on archbox, integrated with nftables.
+CrowdSec agent + firewall bouncer running on debianbox, integrated with nftables. Reinstalled
+fresh during the 2026-07-26 archbox→debianbox rebuild (the old install's local SQLite
+machine/bouncer registrations aren't portable across a wipe) — only `config.yaml` and
+`notifications/*.yaml` were restored on top of the clean install; API-key credentials are
+freshly auto-generated, not restored, since the old ones referenced machine IDs that no
+longer exist.
 
 | Component | Detail |
 |---|---|
@@ -281,29 +303,47 @@ Inter-node k3s traffic (flannel VXLAN, kube-proxy) runs over the **plain LAN**
 broke on a MikePC IP change (see `k3s/SETUP.md`). Tailscale is kept on all three nodes for
 remote administrative access only (SSH from outside the LAN, `tailscale0` accepted below).
 
-All three nodes run a default-deny INPUT firewall via a single custom `inet homelab`
-nftables table (priority -10, runs before k3s/Flannel/CrowdSec chains). This is the actual,
-live ruleset — verified directly against `nft list table inet homelab` on 2026-07-25:
+**History, for anyone diffing against old docs:** this section used to describe two
+separate tables — `inet homelab` (priority -10, general whole-network perimeter firewall,
+config at `/etc/nftables-homelab.conf` + `homelab-firewall.service`) layered underneath
+`inet ringcatch_firewall` (priority -5, added later, RingCatch/k3s-specific). Comparing
+their documented rulesets, the two were functionally near-identical — both default-drop on
+INPUT/FORWARD with essentially the same allowlist. During the 2026-07-26 archbox→debianbox
+rebuild, `homelab`'s source (never committed to this repo or the backup — it only ever
+lived on archbox's disk) was lost, so only `ringcatch_firewall` came back initially. Since
+the RingCatch-specific name was misleading for what's actually a whole-host firewall (the
+`input`/`forward` hooks apply to all traffic on the box, not just k3s/container traffic —
+see [[reference_debianbox]] if that distinction matters to future-you), **the table was
+renamed back to `inet homelab` on 2026-07-26** rather than keeping two tables around. There
+is now exactly one nftables table doing this job, named `homelab`, not two.
+
+mikepc and debianbox run a default-deny INPUT firewall via the `inet homelab` nftables
+table (priority -10, config `/etc/nftables.conf`, standard `nftables.service`; FORWARD and
+OUTPUT are explicit `policy accept` — this table only restricts inbound). centosbook has no
+equivalent nftables table and relies on `firewalld` alone (see the firewalld gotcha in
+`k3s/SETUP.md`) — the "all three nodes" framing in older notes was never quite accurate.
+Current live ruleset on debianbox as of 2026-07-26 (rebuilt to match mikepc's structure
+after the archbox→debianbox rename, see history note above):
 
 ```
-Accepted inbound:
-  - Loopback
+INPUT:  policy drop
+  - Loopback (iif lo)
   - Established / related connections
+  - ct state invalid: drop
   - ICMP + ICMPv6
   - Tailscale interface (tailscale0)
   - UDP 41641 (Tailscale handshake)
-  - 192.168.4.0/24 (LAN)
+  - 192.168.4.0/22 (LAN — mikepc's copy of this table uses /24, which undersells the
+    real DHCP scope of .4.0–.7.255; worth fixing there too, not yet done)
   - 10.42.0.0/16 (k3s pod network)
   - 10.43.0.0/16 (k3s service network)
 
-Everything else: DROP
+FORWARD: policy accept
+OUTPUT:  policy accept
 ```
 
 k3s Flannel CNI and kube-proxy chains are managed automatically by k3s, alongside this
 table. CrowdSec's firewall bouncer injects ban rules into the same ruleset.
-
-Config: `/etc/nftables-homelab.conf` on each node
-Service: `homelab-firewall.service` (enabled, persists across reboots)
 
 centosbook additionally runs `firewalld` (CentOS default, not present on the other two
 nodes) — see the firewalld gotcha in `k3s/SETUP.md` for why that needed its own fix on top

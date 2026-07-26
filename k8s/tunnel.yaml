@@ -18,7 +18,7 @@ spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       nodeSelector:
-        kubernetes.io/hostname: archbox
+        kubernetes.io/hostname: centosbook
       initContainers:
       - name: purge-connections
         image: docker.io/curlimages/curl:7.88.1

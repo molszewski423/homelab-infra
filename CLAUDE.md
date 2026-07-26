@@ -3,7 +3,9 @@
 k3s manifests and IaC for the 3-node home cluster.
 
 **Control plane:** mikepc (192.168.4.54) — kubectl must be run here  
-**Workers:** archbox (agency namespace, holds the shared agency-data-pvc — see k3s/README.md) ·
+**Workers:** debianbox (was archbox until wiped/reinstalled as Debian 13 on 2026-07-26 —
+same LAN IP 192.168.4.45, new Tailscale IP 100.80.218.77; agency namespace, holds the
+shared agency-data-pvc — see k3s/README.md) ·
 centosbook (CentOS Stream 10, reimaged from the old mikeinspiron/Debian box 2026-07-25;
 lid-closed, `always-on=true`, HandleLidSwitch=ignore confirmed)  
 **Remotes:** origin=gitlab.com, gitea=git.lan
@@ -45,7 +47,8 @@ Public site via Cloudflare tunnel. Key config in agency.yaml:
 - `strategy: Recreate` — no rolling overlap during restarts
 - `--metrics 0.0.0.0:2000` + liveness probe httpGet /ready :2000 (30s delay, 60s period, 3 failures)
 - If 502/1033: `kubectl get pods -n agency -l app=agency-tunnel` then check logs
-- **All agency services run exclusively in k3s** — Podman quadlets on archbox are disabled
+- **All agency services run exclusively in k3s** — Podman quadlets on debianbox are disabled (`podman build` is still used for one-off local image builds, not as a service runtime)
+- `agency-tunnel` and `agency-landing` actually run on **centosbook**, not debianbox — the public site stays up independently of debianbox's health
 
 ---
 
@@ -61,6 +64,6 @@ Public site via Cloudflare tunnel. Key config in agency.yaml:
 
 ## Rules
 
-- All secrets in `~/agency/.env` on archbox — never commit
-- Custom agency images are `localhost/agency-*:latest` in k3s containerd on archbox — import manually
-- nodeSelector `archbox` on all agency pods, `mikepc` on all ai pods
+- All secrets in `~/agency/.env` on debianbox — never commit
+- Custom agency images are `localhost/agency-*:latest` in k3s containerd on debianbox — import manually (rootless podman on debianbox needs `pasta_options = ["-4"]` in `~/.config/containers/containers.conf` — IPv6 hangs mid-connection on this LAN for at least one external registry)
+- nodeSelector `debianbox` on all agency pods (except `agency-landing`/`agency-tunnel`, pinned to `centosbook`), `mikepc` on all ai pods

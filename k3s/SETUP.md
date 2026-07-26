@@ -1,6 +1,6 @@
-# k3s Cluster - mikepc + archbox + centosbook
+# k3s Cluster - mikepc + debianbox + centosbook
 
-**Updated:** 2026-07-25
+**Updated:** 2026-07-26
 **k3s version:** v1.36.2+k3s1 (auto-tracked via system-upgrade-controller, stable channel)
 **Status:** Running - 3 nodes, LAN networking (flannel VXLAN over LAN)
 
@@ -13,12 +13,22 @@
 > across all nodes via `system-upgrade-controller` Plans (`k3s-server`/`k3s-agent`,
 > stable channel) — check status with `kubectl get plans -n system-upgrade`.
 
+> **2026-07-26:** `archbox`'s last Arch update broke reboot reliability. Wiped and
+> reinstalled as Debian 13, rejoined as a **new** node object named `debianbox` (the old
+> `archbox` node was deleted, not renamed — k3s identifies nodes by hostname). Same LAN
+> IP (192.168.4.45), new Tailscale IP (100.80.218.77). All hostPath PV data and the
+> Prometheus/Grafana local-path volumes were restored from a pre-wipe backup; every
+> `agency-*` custom container image had to be rebuilt from source since none of them
+> existed anywhere but the old node's local containerd. Full narrative in Claude Code
+> memory as `reference_debianbox`. Cluster is now Debian+Debian+CentOS instead of the
+> originally-deliberate Debian+Arch+CentOS spread — see the OS-diversity note in README.md.
+
 ## Cluster
 
 | Node | Role | LAN IP | OS | Kernel |
 |---|---|---|---|---|
 | mikepc | control-plane | 192.168.4.54 | Debian 13 | 6.12.95+deb13 |
-| archbox | worker | 192.168.4.45 | Arch Linux | 7.0.10-arch1 |
+| debianbox | worker | 192.168.4.45 | Debian 13 | 6.12.96+deb13 |
 | centosbook | worker | 192.168.4.33 | CentOS Stream 10 | 6.12.0-250.el10 |
 
 ## Install - Control Plane (MikePC, Debian 13)
@@ -43,16 +53,22 @@ Get join token:
 sudo cat /var/lib/rancher/k3s/server/node-token
 ```
 
-## Install - Worker Node (archbox, Arch Linux)
+## Install - Worker Node (debianbox, Debian 13)
 
-Create `/etc/systemd/system/k3s-agent.service.env`:
+One-liner (this is what was actually used for the 2026-07-26 rebuild — simpler than
+hand-writing the env file, and sets `--node-ip` explicitly since the box's static IP
+needs to be pinned, not autodetected):
+
+```bash
+curl -sfL https://get.k3s.io | K3S_URL=https://192.168.4.54:6443 K3S_TOKEN=<token from above> sh -s - --node-ip=192.168.4.45
+```
+
+Equivalent env-file approach (create `/etc/systemd/system/k3s-agent.service.env` first):
 
 ```
 K3S_URL=https://192.168.4.54:6443
 K3S_TOKEN=<token from above>
 ```
-
-Then:
 
 ```bash
 curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="agent" sh -
@@ -93,14 +109,15 @@ nodeSelector excluding it from `kube-system` singletons.
 
 ## Gotcha - firewalld on CentOS drops forwarded pod/service traffic by default
 
-Unlike archbox (Arch, no firewalld) and mikepc (Debian, no firewalld), CentOS Stream ships
+Unlike debianbox (Debian, no firewalld — same was true of archbox on Arch before the
+2026-07-26 rebuild) and mikepc (Debian, no firewalld), CentOS Stream ships
 `firewalld` active out of the box. Its default `public` zone only covers the physical NIC —
 the `flannel.1`/`cni0` overlay interfaces aren't zone members, so traffic *forwarded* through
 the node from other nodes gets silently dropped even though `firewall-cmd --list-all` shows
 the flannel VXLAN port (8472/udp) and kubelet (10250/tcp) already open. This is what turned
-the CoreDNS-on-centosbook incident above into a full outage — archbox couldn't reach the
-CoreDNS pod's IP on centosbook's pod subnet at all ("no route to host"), despite the port
-being open and ICMP to the node itself working fine.
+the CoreDNS-on-centosbook incident above into a full outage — archbox (debianbox's
+predecessor) couldn't reach the CoreDNS pod's IP on centosbook's pod subnet at all ("no
+route to host"), despite the port being open and ICMP to the node itself working fine.
 
 **Fix:** trust the k3s pod and service CIDRs as sources, instead of touching the per-port
 rules or the SSH/cockpit protections on the physical interface:
@@ -111,14 +128,16 @@ sudo firewall-cmd --reload
 ```
 Do this on any future CentOS/RHEL-family node before relying on it for cluster-critical pods.
 
-## Gotcha - Podman + k8s Cloudflare Tunnel Conflict
+## Gotcha - Podman + k8s Cloudflare Tunnel Conflict (historical — archbox era, pre-2026-06-14)
 
-archbox ran agency services as Podman quadlets before k8s migration.
-The `agency-tunnel.service` Podman container survives k8s migration and competes
-with the k8s tunnel pod for the same Cloudflare tunnel credentials → connection
-cycling → 502s on ringcatch.io.
+archbox (debianbox's predecessor) ran agency services as Podman quadlets before k8s
+migration. The `agency-tunnel.service` Podman container survived k8s migration and
+competed with the k8s tunnel pod for the same Cloudflare tunnel credentials → connection
+cycling → 502s on ringcatch.io. Podman was permanently retired as a service runtime
+2026-06-14 (see [[feedback_k3s_only]]) and confirmed clean (no quadlets, `podman ps`
+empty) on debianbox after the 2026-07-26 rebuild — but if this ever recurs on any node:
 
-**Fix:** stop the systemd user service on archbox:
+**Fix:** stop the systemd user service on the offending node:
 
 ```bash
 systemctl --user stop agency-tunnel.service
@@ -129,26 +148,28 @@ Check with: `ps aux | grep cloudflared` — should show exactly one process.
 
 ## Gotcha - Tailscale IP change breaks flannel VXLAN
 
-If MikePC gets a new Tailscale IP (e.g. after OS reinstall), archbox's flannel
+If MikePC gets a new Tailscale IP (e.g. after OS reinstall), debianbox's flannel
 FDB still points to the old IP → cross-node pod networking breaks → CoreDNS
 unreachable → services needing DNS at startup crashloop.
 
-Symptoms: `dig @10.43.0.10 discord.com` times out from archbox host.
+Symptoms: `dig @10.43.0.10 discord.com` times out from debianbox host.
 
 **Fix:**
 1. Update `/etc/systemd/system/k3s.service` on MikePC — change `--node-ip`, remove `--flannel-iface=tailscale0`
 2. Restart k3s: `sudo systemctl daemon-reload && sudo systemctl restart k3s`
 3. Update flannel annotation: `kubectl annotate node mikepc flannel.alpha.coreos.com/public-ip=192.168.4.54 --overwrite`
-4. archbox FDB updates automatically once server restarts
+4. debianbox FDB updates automatically once server restarts
 
-## Gotcha - iptables/nftables warning on Arch (non-fatal)
+## Gotcha - iptables/nftables warning on Arch (historical — archbox era, unverified on debianbox)
 
 ```
 iptables-save v1.8.13 (nf_tables): Parsing nftables rule failed
 ```
 
-Appears in k3s-agent logs on archbox but is harmless. Flannel VXLAN and pod
-networking work correctly despite the warning.
+This was seen in k3s-agent logs on archbox (Arch Linux) and was harmless there — flannel
+VXLAN and pod networking worked correctly despite the warning. Not re-verified either way
+on debianbox (Debian) after the 2026-07-26 rebuild; Debian's iptables-nft may or may not
+produce the same warning. Update this note if it recurs (or doesn't).
 
 ## Gotcha - Token Line Break
 
@@ -165,7 +186,7 @@ sudo systemctl daemon-reload && sudo systemctl restart k3s-agent
 ```bash
 kubectl label node mikepc gpu=true
 kubectl label node mikepc always-on=true
-kubectl label node archbox always-on=true
+kubectl label node debianbox always-on=true
 kubectl label node centosbook always-on=true
 ```
 
@@ -185,6 +206,6 @@ kubectl get nodes -o wide
 kubectl get pods -A -o wide
 kubectl top nodes
 sudo systemctl status k3s              # control plane (MikePC)
-sudo systemctl status k3s-agent        # worker (archbox)
+sudo systemctl status k3s-agent        # worker (debianbox)
 sudo journalctl -u k3s-agent -f
 ```

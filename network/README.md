@@ -1,7 +1,17 @@
 # Network Security
 
-Multi-layer network security stack running on archbox (Arch Linux, Intel i3-4130T).
-Previously ran on a Raspberry Pi 4 before migrating to archbox.
+Multi-layer network security stack running on debianbox (Debian 13, Intel i3-4130T) —
+was archbox (Arch Linux) on the same physical hardware until wiped and reinstalled
+2026-07-26. Previously ran on a Raspberry Pi 4 before migrating to archbox/debianbox.
+The 2026-07-26 rebuild restored AdGuard's config + data (4.5M+ historical query log
+entries confirmed intact), CrowdSec's config (reinstalled fresh — its local SQLite
+machine/bouncer registrations aren't portable across a wipe, only `/etc/crowdsec/`
+config was restored on top of a clean install), and nftables. The nftables restore
+initially came back under the name `ringcatch_firewall`, since that was the only table
+actually captured in the backup — this was later renamed to `homelab` and rebuilt to
+match mikepc's structure exactly (priority -10, FORWARD/OUTPUT policy accept), since it's
+a whole-host firewall, not something RingCatch/k3s-specific, and the name was misleading.
+See `../README.md`'s Network Security section for the full history and current ruleset.
 
 ## Stack Overview
 
@@ -37,27 +47,36 @@ Configs: `crowdsec/`
 
 ## nftables Firewall
 
-Default-drop policy. Only SSH and established connections accepted inbound.
-CrowdSec bouncer inserts dynamic ban sets (`crowdsec` and `crowdsec6` tables).
+Table `inet homelab`, INPUT default-drop (FORWARD/OUTPUT policy accept — this table only
+restricts inbound). Only LAN/Tailscale traffic and established connections accepted
+inbound; no bare "allow SSH" rule — SSH access comes for free from the LAN/Tailscale
+subnet allows, same as every other LAN-only service.
+CrowdSec bouncer inserts dynamic ban sets (`crowdsec` and `crowdsec6` tables) alongside it.
 
 ```
-input policy: DROP
-- allow established/related
+INPUT policy: DROP
 - allow loopback
+- allow established/related
 - allow ICMP/ICMPv6
-- allow SSH
-- CrowdSec ban sets applied at priority -10
+- allow Tailscale interface + handshake port
+- allow LAN (192.168.4.0/22) + k3s pod/service CIDRs
+FORWARD/OUTPUT policy: ACCEPT
 ```
 
-Config: `nftables/nftables.conf`
+Config: `/etc/nftables.conf` on each node (the repo's `nftables/nftables.conf` is Debian's
+unused default template, not the real config — see the top of this file for why).
 
 ## Tailscale
 
-Full mesh VPN across all machines. Archbox acts as exit node.
+Full mesh VPN across all machines. debianbox acts as exit node.
+MagicDNS tailnet-wide nameserver points at debianbox's Tailscale IP (AdGuard runs there) —
+if this ever points at a stale/dead IP after a future rebuild, every Tailscale-enabled
+device loses DNS/internet tailnet-wide until the admin console DNS tab is corrected. This
+exact failure mode happened during the 2026-07-26 archbox→debianbox rebuild.
 
 | Machine | Tailscale IP | Role |
 |---|---|---|
-| archbox | 100.96.122.27 | Server, exit node |
+| debianbox | 100.80.218.77 | Server, exit node (was archbox @ 100.96.122.27, retired 2026-07-26) |
 | mikepc | 100.97.45.57 | Dev workstation |
 | debianbook | 100.116.53.100 | Chromebook |
 | iPhone | 100.122.21.25 | Mobile |
@@ -67,12 +86,19 @@ Full mesh VPN across all machines. Archbox acts as exit node.
 Zero-trust tunnel  -  no open inbound ports on the router.
 Services exposed: ringcatch.io (landing), dashboard.ringcatch.io (command center).
 
-Runs as a Podman container in the agency pod. Config: `../quadlets/agency-tunnel.container`
+Runs as a k3s Deployment (`agency-tunnel`, `hostNetwork: true`) as of 2026-06-14 —
+**not** a Podman container; this doc predates the Podman→k3s migration on that point.
+Actually scheduled on **centosbook**, not debianbox, so the public site survives a
+debianbox outage. Manifest: `../k8s/agency.yaml`.
 
-## Raspberry Pi → Archbox Migration
+## Raspberry Pi → Archbox → debianbox
 
-This entire stack was originally deployed on a Raspberry Pi 4 (4GB).
-Migrated to archbox (i3-4130T) for:
+This entire stack was originally deployed on a Raspberry Pi 4 (4GB), then migrated to
+archbox (i3-4130T) for:
 - x86 compatibility (no ARM container headaches)
 - More CPU headroom for CrowdSec + AdGuard under load
-- Ability to run the full 25-container agency pod on the same machine
+- Ability to run the full 25-container agency pod on the same machine (historical — Podman
+  agency-pod was retired 2026-06-14, all agency services run in k3s now)
+
+archbox itself was wiped and reinstalled as Debian 13 ("debianbox") 2026-07-26 after its
+last Arch update broke reboot reliability — same hardware, same role, new OS and hostname.
