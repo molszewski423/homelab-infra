@@ -478,11 +478,14 @@ spec:
         app: agency-scraper
     spec:
       nodeSelector:
-        kubernetes.io/hostname: archbox
+        kubernetes.io/hostname: debianbox
       containers:
       - name: scraper
         image: localhost/agency-scraper:latest
         imagePullPolicy: Never
+        env:
+        - name: TZ
+          value: America/New_York
         envFrom:
         - secretRef:
             name: agency-env
@@ -498,7 +501,25 @@ spec:
             cpu: 200m
           limits:
             memory: 1200Mi
-            cpu: 1000m
+            cpu: 2000m
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8079
+          initialDelaySeconds: 20
+          periodSeconds: 20
+          timeoutSeconds: 10
+          successThreshold: 1
+          failureThreshold: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8079
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 10
+          successThreshold: 1
+          failureThreshold: 3
       volumes:
       - name: data
         persistentVolumeClaim:
