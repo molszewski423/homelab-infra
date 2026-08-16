@@ -21,7 +21,7 @@ Infrastructure as Code for a three-node k3s homelab running a local clinical AI 
 | **mikepc** | Control plane | 192.168.4.54 | 100.97.45.57 | RTX 5060 Ti 16 GB, 32 GB RAM | Debian 13 |
 | **debianbox** | Worker | 192.168.4.45 | 100.80.218.77 | Intel i3-4130T, 24/7 | Debian 13 |
 | **centosbook** | Worker | 192.168.4.33 | Tailscale (DNS disabled — see gotcha below) | Dell Inspiron 3501 · i5-1035G1 · 8 GB RAM | CentOS Stream 10 |
-| **ThinkPad T14 Gen 2** | Daily driver (not a cluster node) | - | Tailscale | i7-1185G7 · 32 GB RAM · 512 GB SSD · WiFi 6 | Debian 13 |
+| **ThinkPad T14 Gen 2** | Daily driver (not a cluster node) | - | Tailscale | i7-1185G7 · 32 GB RAM · 512 GB SSD · WiFi 6 | Rocky Linux 10.2 |
 
 `debianbox` was `archbox` (Arch Linux) on the same hardware until wiped and reinstalled as
 Debian 13 on 2026-07-26 after its last Arch update broke reboot reliability — same LAN IP,
@@ -35,6 +35,13 @@ originally deliberately multi-distro (Debian/Arch/CentOS) to catch distro assump
 manifests and docs; since the 2026-07-26 rebuild it's Debian/Debian/CentOS instead, so
 that property is weaker than designed — see `k3s/README.md` for the full note. Full
 setup/gotcha detail (firewalld, Tailscale DNS override) lives in `k3s/SETUP.md`, not here.
+
+`ThinkPad T14 Gen 2` isn't a cluster node, but is listed here for hardware-inventory
+completeness. It moved from Debian 13 to Rocky Linux 10.2 on 2026-08-11 — deliberate,
+and distinct from `centosbook`'s CentOS Stream role: living day-to-day in `dnf`/SELinux/
+`authselect` on a daily driver builds different, complementary muscle memory to
+administering a RHEL box remotely, supporting the platform/DevOps career track. See the
+`dotfiles` repo for the full desktop setup.
 
 kubectl must be run from **mikepc** (control plane). Worker nodes do not have kubectl configured.
 
