@@ -1,4 +1,11 @@
-# Ansible  -  Archbox Bootstrap
+# Ansible  -  Archbox Bootstrap (STALE — Arch/pacman only, not ported to debianbox)
+
+**As of 2026-07-26, archbox was wiped and reinstalled as Debian 13 ("debianbox").** This
+playbook and all its roles (`base`, `nftables`, `tailscale`, `podman`, `adguard`,
+`crowdsec`) use the Ansible `pacman` module throughout and will fail immediately against
+a Debian host. The 2026-07-26 rebuild was done manually (documented in
+[[reference_debianbox]] in Claude Code memory), not via this playbook. Treat everything
+below as historical reference for the old Arch setup until someone ports it to `apt`.
 
 Automates full archbox setup from a fresh Arch Linux install.
 

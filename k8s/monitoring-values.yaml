@@ -1,7 +1,7 @@
 alertmanager:
   alertmanagerSpec:
     nodeSelector:
-      kubernetes.io/hostname: archbox
+      kubernetes.io/hostname: debianbox
     resources:
       limits:
         cpu: 100m
@@ -48,7 +48,7 @@ grafana:
     server:
       root_url: '%(protocol)s://%(domain)s/grafana'
   nodeSelector:
-    kubernetes.io/hostname: archbox
+    kubernetes.io/hostname: debianbox
   persistence:
     enabled: true
     size: 2Gi
@@ -69,7 +69,7 @@ nodeExporter:
 prometheus:
   prometheusSpec:
     nodeSelector:
-      kubernetes.io/hostname: archbox
+      kubernetes.io/hostname: debianbox
     resources:
       limits:
         cpu: 500m

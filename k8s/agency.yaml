@@ -22,7 +22,7 @@ spec:
         - key: kubernetes.io/hostname
           operator: In
           values:
-          - archbox
+          - debianbox
 ---
 apiVersion: v1
 kind: PersistentVolume
@@ -43,7 +43,7 @@ spec:
         - key: kubernetes.io/hostname
           operator: In
           values:
-          - archbox
+          - debianbox
 ---
 apiVersion: v1
 kind: PersistentVolume
@@ -64,7 +64,7 @@ spec:
         - key: kubernetes.io/hostname
           operator: In
           values:
-          - archbox
+          - debianbox
 ---
 apiVersion: v1
 kind: PersistentVolume
@@ -85,7 +85,7 @@ spec:
         - key: kubernetes.io/hostname
           operator: In
           values:
-          - archbox
+          - debianbox
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -159,7 +159,7 @@ spec:
         app: agency-postgres
     spec:
       nodeSelector:
-        kubernetes.io/hostname: archbox
+        kubernetes.io/hostname: debianbox
       containers:
       - name: postgres
         image: docker.io/postgres:16-alpine
@@ -220,7 +220,7 @@ spec:
         app: agency-n8n
     spec:
       nodeSelector:
-        kubernetes.io/hostname: archbox
+        kubernetes.io/hostname: debianbox
       containers:
       - name: n8n
         image: docker.io/n8nio/n8n:latest
@@ -365,7 +365,7 @@ spec:
         app: agency-voice
     spec:
       nodeSelector:
-        kubernetes.io/hostname: archbox
+        kubernetes.io/hostname: debianbox
       containers:
       - name: voice
         image: ghcr.io/speaches-ai/speaches:latest-cpu
@@ -416,7 +416,7 @@ spec:
         app: agency-orchestrator
     spec:
       nodeSelector:
-        kubernetes.io/hostname: archbox
+        kubernetes.io/hostname: debianbox
       containers:
       - name: orchestrator
         image: localhost/agency-orchestrator:latest
@@ -587,7 +587,7 @@ spec:
     spec:
       serviceAccountName: agency-support
       nodeSelector:
-        kubernetes.io/hostname: archbox
+        kubernetes.io/hostname: debianbox
       containers:
       - name: support
         image: localhost/agency-support:latest
@@ -682,7 +682,7 @@ spec:
         app: agency-dashboard
     spec:
       nodeSelector:
-        kubernetes.io/hostname: archbox
+        kubernetes.io/hostname: debianbox
       containers:
       - name: dashboard
         image: localhost/agency-dashboard:latest
@@ -733,7 +733,7 @@ spec:
         app: agency-outreach
     spec:
       nodeSelector:
-        kubernetes.io/hostname: archbox
+        kubernetes.io/hostname: debianbox
       containers:
       - name: outreach
         image: localhost/agency-outreach:latest
@@ -784,7 +784,7 @@ spec:
         app: agency-delivery
     spec:
       nodeSelector:
-        kubernetes.io/hostname: archbox
+        kubernetes.io/hostname: debianbox
       containers:
       - name: delivery
         image: localhost/agency-delivery:latest
@@ -835,7 +835,7 @@ spec:
         app: agency-billing
     spec:
       nodeSelector:
-        kubernetes.io/hostname: archbox
+        kubernetes.io/hostname: debianbox
       containers:
       - name: billing
         image: localhost/agency-billing:latest
@@ -886,7 +886,7 @@ spec:
         app: agency-command
     spec:
       nodeSelector:
-        kubernetes.io/hostname: archbox
+        kubernetes.io/hostname: debianbox
       containers:
       - name: command
         image: localhost/agency-command:latest
@@ -937,7 +937,7 @@ spec:
         app: agency-legal
     spec:
       nodeSelector:
-        kubernetes.io/hostname: archbox
+        kubernetes.io/hostname: debianbox
       containers:
       - name: legal
         image: localhost/agency-legal:latest
@@ -988,7 +988,7 @@ spec:
         app: agency-marketing
     spec:
       nodeSelector:
-        kubernetes.io/hostname: archbox
+        kubernetes.io/hostname: debianbox
       containers:
       - name: marketing
         image: localhost/agency-marketing:latest
@@ -1039,7 +1039,7 @@ spec:
         app: agency-discord
     spec:
       nodeSelector:
-        kubernetes.io/hostname: archbox
+        kubernetes.io/hostname: debianbox
       containers:
       - name: discord
         image: localhost/agency-discord:latest
@@ -1090,7 +1090,7 @@ spec:
         app: agency-success
     spec:
       nodeSelector:
-        kubernetes.io/hostname: archbox
+        kubernetes.io/hostname: debianbox
       containers:
       - name: success
         image: localhost/agency-success:latest
@@ -1141,7 +1141,7 @@ spec:
         app: agency-bi
     spec:
       nodeSelector:
-        kubernetes.io/hostname: archbox
+        kubernetes.io/hostname: debianbox
       containers:
       - name: bi
         image: localhost/agency-bi:latest
@@ -1192,7 +1192,7 @@ spec:
         app: agency-sales
     spec:
       nodeSelector:
-        kubernetes.io/hostname: archbox
+        kubernetes.io/hostname: debianbox
       containers:
       - name: sales
         image: localhost/agency-sales:latest
@@ -1243,7 +1243,7 @@ spec:
         app: agency-cfo
     spec:
       nodeSelector:
-        kubernetes.io/hostname: archbox
+        kubernetes.io/hostname: debianbox
       containers:
       - name: cfo
         image: localhost/agency-cfo:latest
@@ -1294,7 +1294,7 @@ spec:
         app: agency-inbox
     spec:
       nodeSelector:
-        kubernetes.io/hostname: archbox
+        kubernetes.io/hostname: debianbox
       containers:
       - name: inbox
         image: localhost/agency-inbox:latest
@@ -1345,7 +1345,7 @@ spec:
         app: agency-video
     spec:
       nodeSelector:
-        kubernetes.io/hostname: archbox
+        kubernetes.io/hostname: debianbox
       containers:
       - name: video
         image: localhost/agency-video:latest

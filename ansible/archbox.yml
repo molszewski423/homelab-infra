@@ -1,7 +1,15 @@
 ---
+# STALE as of 2026-07-26 — DO NOT RUN as-is.
+# Written for Arch Linux (archbox); every role below uses the Ansible `pacman` module.
+# archbox was wiped and reinstalled as Debian 13 ("debianbox") on 2026-07-26 — this
+# playbook was NOT used for that rebuild (done manually) and has NOT been ported to
+# apt. Running it against debianbox will fail outright on the first pacman task.
+# Needs a real apt-based port (base/nftables/tailscale/podman/adguard/crowdsec roles
+# all use pacman) before it's usable again — treat as historical reference only until then.
+#
 # Archbox homelab bootstrap playbook
 # Usage: ansible-playbook -i inventory.ini archbox.yml
-# Run from MikeInspiron or MikePC — targets archbox over SSH
+# Run from MikePC — targets archbox over SSH
 
 - name: Bootstrap archbox homelab server
   hosts: archbox
