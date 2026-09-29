@@ -22,6 +22,8 @@ metadata:
   namespace: infra
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: gitea
@@ -62,6 +64,8 @@ spec:
               value: git.lan
             - name: GITEA__server__SSH_PORT
               value: "2222"
+            - name: GITEA__server__SSH_LISTEN_PORT
+              value: "2222"
             - name: GITEA__server__APP_DATA_PATH
               value: /data/gitea
             - name: GITEA__repository__ROOT
@@ -69,7 +73,14 @@ spec:
             - name: GITEA__log__LEVEL
               value: Info
             - name: GITEA__security__INSTALL_LOCK
-              value: "false"
+              value: "true"
+            # The container's real OpenSSH daemon (used for git-over-ssh) reads these
+            # plain, unprefixed vars for its own sshd_config template, separate from
+            # the GITEA__server__SSH_LISTEN_PORT above which only affects app.ini.
+            - name: SSH_PORT
+              value: "2222"
+            - name: SSH_LISTEN_PORT
+              value: "2222"
           volumeMounts:
             - name: data
               mountPath: /data
