@@ -107,6 +107,20 @@ spec:
       port: 2222
       targetPort: 2222
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitea-ssh
+  namespace: infra
+spec:
+  type: LoadBalancer
+  selector:
+    app: gitea
+  ports:
+    - name: ssh
+      port: 2222
+      targetPort: 2222
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
