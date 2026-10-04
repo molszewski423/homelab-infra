@@ -311,7 +311,7 @@ metadata:
   name: agency-kokoro
   namespace: agency
 spec:
-  replicas: 1
+  replicas: 0  # disabled 2026-10-03 (unused)
   selector:
     matchLabels:
       app: agency-kokoro
@@ -1335,7 +1335,7 @@ metadata:
   name: agency-video
   namespace: agency
 spec:
-  replicas: 1
+  replicas: 0  # disabled 2026-10-03 (video production off)
   selector:
     matchLabels:
       app: agency-video
